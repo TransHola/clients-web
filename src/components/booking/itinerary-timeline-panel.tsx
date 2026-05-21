@@ -24,11 +24,20 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
   const effStartTime = isMultiDay ? multiDayStore[currentDayIdx]?.startTime : startTime;
   const effDate = isMultiDay ? multiDayStore[currentDayIdx]?.dateStr : startDate;
 
+  const normalizeLoc = (loc: any) => {
+    if (!loc) return null;
+    if (typeof loc === 'string') return { address: loc, name: loc };
+    return loc;
+  };
+
+  const normPickup = normalizeLoc(effPickup);
+  const normDropoff = normalizeLoc(effDropoff);
+
   const waypoints = [
-    { type: "pickup", ...effPickup, time: effStartTime, label: "Pickup Location" },
-    ...effStops.map((s: any, i: number) => ({ type: "stop", ...s, label: `Stop ${i + 1}` })),
-    { type: "dropoff", ...effDropoff, label: "Final Dropoff" }
-  ].filter(w => w?.address) // filter out invalid spots
+    { type: "pickup", ...normPickup, time: effStartTime, label: "Pickup Location" },
+    ...effStops.map((s: any, i: number) => ({ type: "stop", ...normalizeLoc(s), label: `Stop ${i + 1}` })),
+    { type: "dropoff", ...normDropoff, label: "Final Dropoff" }
+  ].filter(w => w && (w.address || w.name)) // filter out invalid spots
 
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
@@ -75,41 +84,59 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
 
       {/* Body: Timeline */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="relative pl-4 space-y-8">
-          {/* Vertical dashed line */}
-          <div className="absolute top-6 bottom-8 left-[23px] w-[2px] bg-slate-200 border-l-2 border-dashed border-slate-300" />
+        <div className="relative space-y-6">
+          {/* Vertical line aligned to center of 40px circle (20px - 1px half-width = 19px) */}
+          <div className="absolute top-5 bottom-6 left-[19px] w-[2px] bg-slate-200" />
 
           {waypoints.map((wp: any, idx: number) => {
             const isFirst = idx === 0
             const isLast = idx === waypoints.length - 1
+            const isStop = !isFirst && !isLast
             const Icon = isFirst ? Navigation : isLast ? Flag : MapPin
-            const colorClass = isFirst ? "bg-green-500 text-white" : isLast ? "bg-red-500 text-white" : "bg-blue-500 text-white"
+            const circleClass = isFirst 
+              ? "bg-emerald-500 text-white shadow-emerald-500/20" 
+              : isLast 
+              ? "bg-rose-500 text-white shadow-rose-500/20" 
+              : "bg-white border-2 border-blue-500 shadow-sm"
+
+            const labelColor = isFirst ? "text-emerald-500" : isLast ? "text-rose-500" : "text-blue-500"
 
             return (
-              <div key={idx} className="relative flex items-start gap-5">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md relative z-10 shrink-0 ring-4 ring-white ${colorClass}`}>
-                  <Icon className="w-4 h-4" strokeWidth={2.5} />
+              <div key={idx} className="relative flex items-start gap-5 group">
+                {/* Circle Marker */}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md relative z-10 shrink-0 ring-4 ring-white transition-transform duration-300 group-hover:scale-110 ${circleClass}`}>
+                  {isStop ? (
+                     <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  ) : (
+                     <Icon className="w-4 h-4" strokeWidth={2.5} />
+                  )}
                 </div>
-                <div className="pt-1.5 flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                
+                {/* Content */}
+                <div className="pt-1 flex-1 min-w-0 pb-2">
+                  <p className={`text-[11px] font-black uppercase tracking-widest mb-1 ${labelColor}`}>
                     {wp.label}
                   </p>
-                  <p className="text-base font-bold text-slate-900 leading-tight mb-1 truncate">
+                  <p className="text-base font-bold text-slate-900 leading-tight mb-1 truncate group-hover:text-blue-600 transition-colors">
                     {wp.name || wp.address?.split(",")[0] || "Unknown Location"}
                   </p>
                   <p className="text-sm text-slate-500 line-clamp-2">
                     {wp.address}
                   </p>
-                  {wp.time && (
-                    <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-blue-600 bg-blue-50 w-fit px-2 py-1 rounded-md">
-                      {isFirst ? "Departure:" : isLast ? "Arrival:" : "Time:"} {wp.time}
-                    </div>
-                  )}
-                  {wp.stopDurationMin && (
-                    <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-blue-600 bg-blue-50 w-fit px-2 py-1 rounded-md">
-                      <Clock className="w-3.5 h-3.5" /> {wp.stopDurationMin} min wait
-                    </div>
-                  )}
+                  
+                  {/* Badges container */}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {wp.time && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> {wp.time}
+                      </div>
+                    )}
+                    {wp.stopDurationMin && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <ArrowDown className="w-3.5 h-3.5 text-blue-500" /> {wp.stopDurationMin} min wait
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )

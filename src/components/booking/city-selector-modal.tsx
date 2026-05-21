@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { LocationSearchInput, LocationResult } from "./location-search"
 
@@ -20,6 +21,9 @@ interface CitySelectorModalProps {
 }
 
 export function CitySelectorModal({ isOpen, onClose, currentContext, onCitySelected }: CitySelectorModalProps) {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => { setMounted(true) }, [])
+
   if (!isOpen) return null
 
   const handleSelect = (loc: LocationResult) => {
@@ -42,7 +46,9 @@ export function CitySelectorModal({ isOpen, onClose, currentContext, onCitySelec
 
   const displayCountry = currentContext?.country || "your area"
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0,
       background: 'rgba(255,255,255,0.9)',
@@ -102,6 +108,7 @@ export function CitySelectorModal({ isOpen, onClose, currentContext, onCitySelec
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

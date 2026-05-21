@@ -9,6 +9,8 @@ export const LiveMapWrapper = dynamic(
   pickup?: any
   dropoff?: any
   stops?: StopLocation[]
+  tripType?: string
+  shuttleVehicles?: number
   userLocation?: { lat: number; lon: number } | null
   onPickupMoved?: (loc: PinLocation) => void
   onDropoffMoved?: (loc: PinLocation) => void

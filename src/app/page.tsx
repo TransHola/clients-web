@@ -14,6 +14,8 @@ export default function Home() {
   const [userLocation, setUserLocation] = React.useState<{ lat: number; lon: number } | null>(null)
   const [bookingStep, setBookingStep] = React.useState<"search" | "quotation" | "timeline">("search")
   const [selectedQuote, setSelectedQuote] = React.useState<any | null>(null)
+  const [tripType, setTripType] = React.useState<string>("oneway")
+  const [shuttleVehicles, setShuttleVehicles] = React.useState<number>(1)
 
   // Track the "pinned" (drag-adjusted) locations separately from the typed ones
   const [pickupPinned, setPickupPinned] = React.useState<PinLocation | null>(null)
@@ -87,8 +89,8 @@ export default function Home() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: selectedQuote 
-          ? (bookingStep === 'quotation' ? '960px 1fr 380px' : '520px 1fr 380px') 
-          : (bookingStep === 'quotation' ? '960px 1fr' : '520px 1fr'),
+          ? (bookingStep === 'quotation' ? '1040px 1fr 380px' : '600px 1fr 380px') 
+          : (bookingStep === 'quotation' ? '1040px 1fr' : '600px 1fr'),
         gap: '12px',
         padding: '12px',
         minHeight: 0,
@@ -104,6 +106,7 @@ export default function Home() {
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
+          zIndex: 50,
         }}>
           <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
             <BookingPanel
@@ -117,6 +120,8 @@ export default function Home() {
               onStepChange={setBookingStep}
               onStopsChange={setStops}
               onQuoteSelected={setSelectedQuote}
+              onTripTypeChange={setTripType}
+              onShuttleVehiclesChange={setShuttleVehicles}
             />
           </div>
         </div>
@@ -133,6 +138,8 @@ export default function Home() {
             pickup={pickup}
             dropoff={dropoff}
             stops={stops}
+            tripType={tripType}
+            shuttleVehicles={shuttleVehicles}
             userLocation={userLocation}
             onPickupMoved={handlePickupMoved}
             onDropoffMoved={handleDropoffMoved}

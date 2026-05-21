@@ -32,37 +32,41 @@ export default function QuotationsPage() {
     async function loadQuotes() {
       try {
         const supabase = createClient()
-        // Using the same testing user_id you are passing in the QuotaionPanel payload
+        const { data: { session } } = await supabase.auth.getSession()
+        const userId = session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34"
+
         const { data, error } = await supabase
-          .from("quotations")
+          .from("bookings")
           .select("*")
-          .eq("user_id", "7cf68383-439b-4971-980d-f29e646a2d34")
-          .not("status", "in", '("booked","consumed")')
+          .eq("user_id", userId)
+          .eq("status", "quotation")
           .order("created_at", { ascending: false })
 
         if (error) throw error
 
         const mapped = (data || []).map((row) => {
-          const details = row.quotation_details || {}
+          const details = row.booking_details || row.quotation_details || {}
           if (details.option && details.option.priceAED && !details.option.price) {
              details.option.price = details.option.priceAED;
           }
           // Inject actual DB row currency downward into the parsed rawDetails payload
           details.currency = row.currency || "USD";
           
+          const expiresAt = new Date(new Date(row.created_at).getTime() + 86400000);
+          
           return {
             db_id: row.id,
-            id: row.ref || `Q-${row.id.substring(0, 8)}`,
+            id: row.booking_ref || row.ref || `Q-${row.id.substring(0, 8).toUpperCase()}`,
             vehicle: details.option?.label || "Charter Vehicle",
-            from: row.pickup_location || "Unknown Pickup",
-            to: row.dropoff_location || "Unknown Dropoff",
+            from: typeof details.pickup === 'string' ? details.pickup : (details.pickup?.name || details.pickup?.address || row.pickup_location || "Unknown Pickup"),
+            to: typeof details.dropoff === 'string' ? details.dropoff : (details.dropoff?.name || details.dropoff?.address || row.dropoff_location || "Unknown Dropoff"),
             price: row.price || 0,
             currency: details.currency,
             seats: details.passengers || details.option?.totalSeats || row.vehicle_count || 1,
             eta: details.option?.eta || "N/A",
             isPremium: false,
-            status: row.status === "expired" ? "expired" : "valid",
-            expiresAt: row.expires_at ? new Date(row.expires_at) : new Date(Date.now() + 86400000), 
+            status: expiresAt.getTime() < Date.now() ? "expired" : "valid",
+            expiresAt: expiresAt,
             createdAt: row.created_at,
             rawDetails: details
           }
@@ -331,8 +335,8 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
   const isMultiDay = details.tripType === 'multi-day' && details.multiDayStore && details.multiDayStore.length > 1;
   const currentDay = isMultiDay ? details.multiDayStore[routeDayIdx] : details;
 
-  const defaultFrom = isMultiDay ? (currentDay?.pickupLoc?.name || currentDay?.pickupLoc?.address || 'Unknown Pickup') : quote.from;
-  const defaultTo = isMultiDay ? (currentDay?.dropoffLoc?.name || currentDay?.dropoffLoc?.address || 'Unknown Dropoff') : quote.to;
+  const defaultFrom = isMultiDay ? (typeof currentDay?.pickupLoc === 'string' ? currentDay.pickupLoc : (currentDay?.pickupLoc?.name || currentDay?.pickupLoc?.address || 'Unknown Pickup')) : quote.from;
+  const defaultTo = isMultiDay ? (typeof currentDay?.dropoffLoc === 'string' ? currentDay.dropoffLoc : (currentDay?.dropoffLoc?.name || currentDay?.dropoffLoc?.address || 'Unknown Dropoff')) : quote.to;
   
   const currentStops = isMultiDay ? (currentDay?.stops || []) : (details.stops || []);
   
@@ -348,10 +352,20 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
                 <CarFront className="w-6 h-6 text-slate-700" />
               </div>
               <div className="min-w-0">
-                 <p className="font-bold text-sm text-slate-900 truncate">{quote.vehicle}</p>
+                 <div className="flex items-center gap-2 mb-0.5">
+                   <p className="font-bold text-sm text-slate-900 truncate">{quote.vehicle}</p>
+                   {details.isThirdParty && (
+                     <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">Agency</span>
+                   )}
+                 </div>
                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">
                    {quote.id} • {tripDate}{numDays > 1 ? ` • ${numDays} Days` : ''}
                  </p>
+                 {details.isThirdParty && details.thirdPartyInfo && (
+                    <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">
+                      For: {details.thirdPartyInfo.firstName} {details.thirdPartyInfo.lastName} {details.thirdPartyInfo.company ? `(${details.thirdPartyInfo.company})` : ''}
+                    </p>
+                 )}
               </div>
            </div>
            <div className="text-right shrink-0">
@@ -433,7 +447,17 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
             <CarFront className="w-6 h-6 text-slate-600" />
          </div>
          <div className="min-w-0 flex-1">
-            <p className="font-bold text-slate-900 truncate leading-tight text-base mb-0.5">{quote.vehicle}</p>
+            <div className="flex items-center gap-2 mb-0.5">
+               <p className="font-bold text-slate-900 truncate leading-tight text-base">{quote.vehicle}</p>
+               {details.isThirdParty && (
+                  <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">Agency</span>
+               )}
+            </div>
+            {details.isThirdParty && details.thirdPartyInfo && (
+               <p className="text-xs font-semibold text-slate-500 truncate mt-0.5">
+                 For: {details.thirdPartyInfo.firstName} {details.thirdPartyInfo.lastName} {details.thirdPartyInfo.company ? `(${details.thirdPartyInfo.company})` : ''}
+               </p>
+            )}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] sm:text-xs font-bold text-slate-400 mt-1">
                <span className="uppercase tracking-wider whitespace-nowrap">{quote.id}</span>
                <span className="text-slate-300">•</span>

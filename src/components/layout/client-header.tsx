@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { Bell, MapPin, User, ChevronDown, Building2, Search, Briefcase } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { logout } from "@/app/actions/auth"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,9 +17,24 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
+import { createClient } from "@/lib/supabase/client"
+
 export function ClientHeader() {
   const router = useRouter()
   const pathname = usePathname()
+  const [profile, setProfile] = React.useState<any>(null)
+
+  React.useEffect(() => {
+    async function loadProfile() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        setProfile(data)
+      }
+    }
+    loadProfile()
+  }, [])
   return (
     <header className="sticky top-0 z-[1000] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
       <div className="flex w-full h-16 items-center justify-between px-4 md:px-8">
@@ -68,11 +84,17 @@ export function ClientHeader() {
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-10 px-2 py-2 items-center gap-2 hover:bg-muted/50 rounded-xl outline-none transition-colors">
                 <Avatar className="h-8 w-8 border">
-                  <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">GT</AvatarFallback>
+                  <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">
+                    {profile?.first_name?.[0] || profile?.full_name?.[0] || ''}{profile?.last_name?.[0] || ''}
+                  </AvatarFallback>
                 </Avatar>
                 <span className="flex flex-col items-start hidden sm:flex">
-                  <span className="text-sm font-bold leading-none">Global Tech</span>
-                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-0.5">Corporate HQ</span>
+                  <span className="text-sm font-bold leading-none">
+                    {profile?.preferences?.companyName || profile?.full_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-0.5">
+                    {profile?.preferences?.clientType || 'Individual'}
+                  </span>
                 </span>
                 <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
             </DropdownMenuTrigger>
@@ -80,8 +102,10 @@ export function ClientHeader() {
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <span className="text-sm font-medium leading-none">Global Tech Solutions</span>
-                    <span className="text-xs text-muted-foreground leading-none mt-1">logistics@globaltech.com</span>
+                    <span className="text-sm font-medium leading-none">
+                      {profile?.preferences?.companyName || profile?.full_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`}
+                    </span>
+                    <span className="text-xs text-muted-foreground leading-none mt-1">{profile?.email}</span>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -93,7 +117,12 @@ export function ClientHeader() {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 cursor-pointer py-2 text-rose-600 focus:bg-rose-50 focus:text-rose-600">
+              <DropdownMenuItem 
+                className="gap-2 cursor-pointer py-2 text-rose-600 focus:bg-rose-50 focus:text-rose-600"
+                onClick={async () => {
+                  await logout();
+                }}
+              >
                 Log out
               </DropdownMenuItem>
             </DropdownMenuContent>

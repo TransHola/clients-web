@@ -24,7 +24,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
         <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 24px' }}>Review vehicle specs and request optional amenities</p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-        {option.vehicles.map((v: any, idx: number) => {
+        {(option.vehicles || [{ type: option.label || option.title || 'Standard', count: 1, seats: option.totalSeats || option.seats || 4 }]).map((v: any, idx: number) => {
           return (
             <div key={idx} style={{ padding: '16px', borderRadius: '14px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>

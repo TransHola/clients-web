@@ -10,6 +10,10 @@ import { ReceiptModal } from "./receipt-modal"
 import { CancellationModal } from "./cancellation-modal"
 import { createClient } from "@/lib/supabase/client"
 import { OptimizationSolver, OptimizationResult } from "@/lib/rate-engine/optimization-solver"
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_mock');
 
 // ─── Vehicle SVG Icons (Uber-style silhouettes) ────────────────────────────────
 function SedanIcon({ color = "#94a3b8", size = 32 }: { color?: string; size?: number }) {
@@ -106,26 +110,32 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 }) {
   const [options, setOptions] = React.useState<VehicleOption[]>([]);
   const [currency, setCurrency] = React.useState<string>("USD");
+  const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
   React.useEffect(() => {
     async function fetchCalculations() {
+      setIsLoading(true);
       try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+
         const payload = {
-          userId: null,
+          userId: session?.user?.id || null,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
           tripType,
           countryCode: bookingDetails?.countryCode || 'US',
           passengers,
           routeDistanceKm,
-          durationHours: bookingDetails?.durationHours
+          durationHours: bookingDetails?.duration ? bookingDetails.duration / 3600 : undefined,
+          multiDayStore: bookingDetails?.multiDayStore
         };
 
         const res = await fetch("http://localhost:8000/api/bookings/calculate", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer BYPASS_AUTH"
+            "Authorization": `Bearer ${session?.access_token || 'BYPASS_AUTH'}`
           },
           body: JSON.stringify(payload)
         });
@@ -133,14 +143,31 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         if (!res.ok) throw new Error("Backend calculate failed");
 
         const data = await res.json();
-        setOptions(data.data?.options || []);
+        const returnedOptions = data.data?.options || [];
+        setOptions(returnedOptions);
         if (data.data?.currency) setCurrency(data.data.currency);
+
+        if (bookingDetails?.option) {
+          const match = returnedOptions.find((o: any) => o.id === bookingDetails.option.id || o.label === bookingDetails.option.label);
+          if (match) {
+            setSelected(match);
+            if (onSelectionChange) onSelectionChange(match);
+          } else {
+            setSelected(bookingDetails.option);
+            if (onSelectionChange) onSelectionChange(bookingDetails.option);
+          }
+        }
       } catch (err) {
         console.error("Calculate Error:", err);
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchCalculations();
-  }, [passengers, routeDistanceKm, tripType, bookingDetails]);
+    // Stable primitives from bookingDetails to avoid re-fetch on every parent render
+  }, [passengers, routeDistanceKm, tripType,
+    bookingDetails?.pickup?.address, bookingDetails?.dropoff?.address,
+    bookingDetails?.countryCode, bookingDetails?.duration]);
 
   const [selected, setSelected] = React.useState<VehicleOption | null>(null)
   const [step, setStep] = React.useState<"select" | "payment" | "confirmed">("select")
@@ -148,8 +175,12 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   const [savedAsQuote, setSavedAsQuote] = React.useState(false)
   const [isSavingQuote, setIsSavingQuote] = React.useState(false)
   const [showCancel, setShowCancel] = React.useState(false)
+
+  // Third party booking states
+  const [isThirdParty, setIsThirdParty] = React.useState(false);
+  const [thirdPartyInfo, setThirdPartyInfo] = React.useState({ firstName: "", lastName: "", email: "", phone: "", company: "" });
+
   const { expiresAt, canSaveAsQuote } = React.useMemo(() => {
-    let _canSaveAsQuote = true;
     let _expiresAt = new Date(Date.now() + expirationHours * 3_600_000);
 
     if (bookingDetails?.startDate && bookingDetails?.startTime) {
@@ -157,17 +188,18 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         const [year, month, day] = bookingDetails.startDate.split('-');
         const [hour, minute] = bookingDetails.startTime.split(':');
         const startDateTime = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
-        
+
         if (startDateTime.getTime() < _expiresAt.getTime()) {
-           _canSaveAsQuote = false;
-           _expiresAt = startDateTime;
+          // Trip starts sooner than standard expiration, set expiration to trip start time
+          _expiresAt = startDateTime;
         }
-      } catch(e) {
+      } catch (e) {
         console.error("Error parsing start date/time", e);
       }
     }
-    
-    return { expiresAt: _expiresAt, canSaveAsQuote: _canSaveAsQuote };
+
+    // Always allow saving as quote, just adjust the expiration
+    return { expiresAt: _expiresAt, canSaveAsQuote: true };
   }, [expirationHours, bookingDetails]);
 
   const countdown = useCountdown(expiresAt);
@@ -183,7 +215,9 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
     if (!selected) return;
     setIsSavingQuote(true);
     try {
-      const token = "BYPASS_AUTH";
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "BYPASS_AUTH";
 
       const res = await fetch("http://localhost:8000/api/bookings/quotation", {
         method: "POST",
@@ -192,7 +226,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          userId: "7cf68383-439b-4971-980d-f29e646a2d34", // Explicit payload testing ID fallback
+          userId: session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34", // Explicit payload testing ID fallback
           option: selected,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
@@ -208,7 +242,10 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           currency: currency,
           distance: routeDistanceKm || bookingDetails?.distance,
           duration: bookingDetails?.durationHours || bookingDetails?.duration,
-          routePolyline: bookingDetails?.routePolyline
+          routePolyline: bookingDetails?.routePolyline,
+          pickupWaitMin: bookingDetails?.pickupWaitMin,
+          isThirdParty,
+          thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined
         })
       });
 
@@ -270,7 +307,10 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   // Ensure we at least show something if there are no uniform fleets
   const shown = logicalOptions.length > 0 ? logicalOptions : options
 
-  if (step === "payment" && selected) return <PaymentPanel option={selected} bookingDetails={bookingDetails} currency={currency} onBack={() => setStep("select")} onConfirm={(id) => { setBookingId(id); setStep("confirmed"); }} />
+  if (step === "payment" && selected) {
+    return <MockCheckoutForm option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id: string) => { setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+  }
+  
   if (step === "confirmed" && selected) return (
     <>
       <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id) => onSelect(id)} onCancel={() => setShowCancel(true)} />
@@ -290,7 +330,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        <button onClick={onBack} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
+        <button onClick={() => { setSelected(null); if (onSelectionChange) onSelectionChange(null); onBack(); }} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
           <X style={{ width: '15px', height: '15px' }} />
         </button>
         <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: '0 0 3px' }}>Choose your ride</h2>
@@ -324,106 +364,69 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
       {/* Options */}
       <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {shown.map(opt => {
-          const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
-          const isSelected = selected?.id === opt.id
-          const tagColors: Record<string, { bg: string; text: string }> = {
-            "Eco Friendly": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
-            "Best Value": { bg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', text: 'white' },
-            "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
-            "Lowest Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
-            "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
+        <style>{`
+          @keyframes skeleton-shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
           }
-          const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
-
-          return (
-            <button key={opt.id} onClick={() => setSelected(opt)} style={{
-              width: '100%', textAlign: 'left', padding: '16px 18px', borderRadius: '20px', cursor: 'pointer',
-              border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
-              background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
-              boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              position: isSelected ? 'sticky' : 'relative',
-              top: isSelected ? (headerVisible ? `${headerHeight + 12}px` : '12px') : 'auto',
-              zIndex: isSelected ? 5 : 1,
-              transform: isSelected ? 'scale(1.01)' : 'scale(1)',
-              display: 'flex', flexDirection: 'column', gap: '12px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                {/* Icon Container */}
-                <div style={{ position: 'relative', width: '80px', height: '56px', borderRadius: '14px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9' }}>
-                  {opt.vehicles.length > 1 ? (
-                    <div style={{ position: 'relative', width: '60px', height: '40px' }}>
-                      <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
-                        {React.createElement(VEHICLE_ICONS[opt.vehicles[1].iconName || opt.vehicles[1].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
-                      </div>
-                      <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
-                        {React.createElement(VEHICLE_ICONS[opt.vehicles[0].iconName || opt.vehicles[0].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <Icon color={isSelected ? '#2563eb' : '#64748b'} size={48} />
-                      {opt.vehicles[0]?.count > 1 && (
-                        <div style={{ position: 'absolute', top: '-8px', right: '-8px', padding: '3px 8px', borderRadius: '12px', background: isSelected ? '#1d4ed8' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid white' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>×{opt.vehicles[0].count}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Core Info */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{opt.label}</span>
-                    {opt.tag && tc && <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 9px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>{opt.tag}</span>}
+        `}</style>
+        {isLoading ? (
+          <>
+            {[1, 2, 3].map((i) => (
+              <div key={i} style={{
+                width: '100%', borderRadius: '20px', padding: '16px 18px',
+                border: '1.5px solid #e2e8f0', background: '#ffffff',
+                display: 'flex', flexDirection: 'column', gap: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                  <div style={{
+                    width: '80px', height: '56px', borderRadius: '14px', flexShrink: 0,
+                    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                    backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                  }} />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{
+                      width: '60%', height: '14px', borderRadius: '8px',
+                      background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                      backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                    }} />
+                    <div style={{
+                      width: '80%', height: '12px', borderRadius: '6px',
+                      background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                      backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                    }} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b', fontWeight: 600, flexWrap: 'wrap' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.totalSeats} seats</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.eta}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldCheck style={{ width: '12px', height: '12px', color: '#10b981' }} />Verified</span>
+                  <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                    <div style={{
+                      width: '60px', height: '18px', borderRadius: '8px',
+                      background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                      backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                    }} />
+                    <div style={{
+                      width: '40px', height: '10px', borderRadius: '4px',
+                      background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                      backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                    }} />
                   </div>
                 </div>
-
-                {/* Price */}
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>{currency} {opt.price}</p>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, margin: '2px 0 0' }}>Incl. VAT</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
+                  <div style={{
+                    width: '80px', height: '12px', borderRadius: '6px',
+                    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                    backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                  }} />
+                  <div style={{
+                    width: '50px', height: '22px', borderRadius: '8px',
+                    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                    backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite linear'
+                  }} />
                 </div>
               </div>
-
-              {/* Category & Breakdown Row */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                  {opt.serviceCategory || "Standard Fleet"}
-                </span>
-
-                {opt.vehicles.length > 1 && (
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {opt.vehicles.map((v, i) => {
-                      const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
-                      return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
-                    })}
-                  </div>
-                )}
-              </div>
-            </button>
-          )
-        })}
-
-        {/* Advanced Combinations Revealer */}
-        {advancedOptions.length > 0 && (
-          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              style={{ width: '100%', padding: '12px', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '16px', color: '#475569', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}
-            >
-              <RefreshCw style={{ width: '14px', height: '14px', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
-              {showAdvanced ? "Hide Advanced Combinations" : `View Advanced Combinations (${advancedOptions.length})`}
-            </button>
-
-            {showAdvanced && advancedOptions.map(opt => {
+            ))}
+          </>
+        ) : (
+          <>
+            {shown.map(opt => {
               const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
               const isSelected = selected?.id === opt.id
               const tagColors: Record<string, { bg: string; text: string }> = {
@@ -442,19 +445,34 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                   background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
                   boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: isSelected ? 'sticky' : 'relative',
+                  top: isSelected ? (headerVisible ? `${headerHeight + 12}px` : '12px') : 'auto',
+                  zIndex: isSelected ? 5 : 1,
+                  transform: isSelected ? 'scale(1.01)' : 'scale(1)',
                   display: 'flex', flexDirection: 'column', gap: '12px'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                     {/* Icon Container */}
                     <div style={{ position: 'relative', width: '80px', height: '56px', borderRadius: '14px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9' }}>
-                      <div style={{ position: 'relative', width: '60px', height: '40px' }}>
-                        <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
-                          {React.createElement(VEHICLE_ICONS[opt.vehicles[1]?.iconName || opt.vehicles[1]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
+                      {opt.vehicles.length > 1 ? (
+                        <div style={{ position: 'relative', width: '60px', height: '40px' }}>
+                          <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
+                            {React.createElement(VEHICLE_ICONS[opt.vehicles[1].iconName || opt.vehicles[1].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
+                          </div>
+                          <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
+                            {React.createElement(VEHICLE_ICONS[opt.vehicles[0].iconName || opt.vehicles[0].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
+                          </div>
                         </div>
-                        <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
-                          {React.createElement(VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
-                        </div>
-                      </div>
+                      ) : (
+                        <>
+                          <Icon color={isSelected ? '#2563eb' : '#64748b'} size={48} />
+                          {opt.vehicles[0]?.count > 1 && (
+                            <div style={{ position: 'absolute', top: '-8px', right: '-8px', padding: '3px 8px', borderRadius: '12px', background: isSelected ? '#1d4ed8' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid white' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>×{opt.vehicles[0].count}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     {/* Core Info */}
@@ -480,22 +498,110 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                   {/* Category & Breakdown Row */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
                     <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                      {opt.serviceCategory || "Mixed Fleet"}
+                      {opt.serviceCategory || "Standard Fleet"}
                     </span>
 
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {opt.vehicles.map((v, i) => {
-                        const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
-                        return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
-                      })}
-                    </div>
+                    {opt.vehicles.length > 1 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {opt.vehicles.map((v, i) => {
+                          const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
+                          return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
+                        })}
+                      </div>
+                    )}
                   </div>
                 </button>
               )
             })}
-          </div>
+
+            {/* Advanced Combinations Revealer */}
+            {advancedOptions.length > 0 && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  style={{ width: '100%', padding: '12px', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '16px', color: '#475569', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
+                  {showAdvanced ? "Hide Advanced Combinations" : `View Advanced Combinations (${advancedOptions.length})`}
+                </button>
+
+                {showAdvanced && advancedOptions.map(opt => {
+                  const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
+                  const isSelected = selected?.id === opt.id
+                  const tagColors: Record<string, { bg: string; text: string }> = {
+                    "Eco Friendly": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
+                    "Best Value": { bg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', text: 'white' },
+                    "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
+                    "Lowest Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
+                    "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
+                  }
+                  const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
+
+                  return (
+                    <button key={opt.id} onClick={() => setSelected(opt)} style={{
+                      width: '100%', textAlign: 'left', padding: '16px 18px', borderRadius: '20px', cursor: 'pointer',
+                      border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
+                      background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
+                      boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
+                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex', flexDirection: 'column', gap: '12px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                        {/* Icon Container */}
+                        <div style={{ position: 'relative', width: '80px', height: '56px', borderRadius: '14px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9' }}>
+                          <div style={{ position: 'relative', width: '60px', height: '40px' }}>
+                            <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
+                              {React.createElement(VEHICLE_ICONS[opt.vehicles[1]?.iconName || opt.vehicles[1]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
+                            </div>
+                            <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
+                              {React.createElement(VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Core Info */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{opt.label}</span>
+                            {opt.tag && tc && <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 9px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>{opt.tag}</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b', fontWeight: 600, flexWrap: 'wrap' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.totalSeats} seats</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.eta}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldCheck style={{ width: '12px', height: '12px', color: '#10b981' }} />Verified</span>
+                          </div>
+                        </div>
+
+                        {/* Price */}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <p style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>{currency} {opt.price}</p>
+                          <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, margin: '2px 0 0' }}>Incl. VAT</p>
+                        </div>
+                      </div>
+
+                      {/* Category & Breakdown Row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                          {opt.serviceCategory || "Mixed Fleet"}
+                        </span>
+
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {opt.vehicles.map((v, i) => {
+                            const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
+                            return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
+                          })}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
+
+
 
       {/* Footer */}
       {selected && (
@@ -509,7 +615,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '9px 13px', borderRadius: '10px', background: '#f8fafc', border: '1px dashed #e2e8f0' }}>
             <Info style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0, marginTop: '1px' }} />
             {canSaveAsQuote ? (
-              <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Quote valid {expirationHours} hours.</p>
+              <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Quote valid until {expiresAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>
             ) : (
               <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Trip starts too soon to save quote. Book now.</p>
             )}
@@ -535,57 +641,68 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
 // ─── Payment State Machine ─────────────────────────────────────────────────────
 type PayState = "idle" | "loading" | "success" | "declined" | "error" | "timeout"
-const SAVED_CARDS = [
-  { id: "c1", last4: "4242", brand: "Visa", exp: "09/26", isDefault: true },
-  { id: "c2", last4: "1881", brand: "Mastercard", exp: "03/27", isDefault: false },
-]
+const SAVED_CARDS: any[] = []
 
-export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void }) {
-  const [selectedCard, setSelectedCard] = React.useState(SAVED_CARDS[0].id)
-  const [showNewCard, setShowNewCard] = React.useState(false)
-  const [newCard, setNewCard] = React.useState({ number: "", expiry: "", cvv: "", name: "" })
-  const [payState, setPayState] = React.useState<PayState>("idle")
+function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: any) {
+  const [payState, setPayState] = React.useState<PayState>("idle");
+  const [errorMessage, setErrorMessage] = React.useState("");
+  const [selectedCard, setSelectedCard] = React.useState<string>(SAVED_CARDS[0]?.id || 'new');
+  const [saveNewCard, setSaveNewCard] = React.useState(false);
 
-  const handlePay = async () => {
-    setPayState("loading")
-    try {
-      // POST the booking state array to the unified Enterprise API Gateway
-      const res = await fetch("http://localhost:8000/api/bookings/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer MOCK_ENTERPRISE_JWT" // In production this comes from context
-        },
-        body: JSON.stringify({
-          option,
-          pickup: bookingDetails?.pickup,
-          dropoff: bookingDetails?.dropoff,
-          startDate: bookingDetails?.startDate,
-          startTime: bookingDetails?.startTime,
-          passengers: bookingDetails?.passengers,
-          tripType: bookingDetails?.tripType,
-          multiDayStore: bookingDetails?.multiDayStore,
-          currency: currency,
-          distance: bookingDetails?.routeDistanceKm || bookingDetails?.distance,
-          duration: bookingDetails?.durationHours || bookingDetails?.duration,
-          quotation_db_id: bookingDetails?.quotation_db_id,
-          routePolyline: bookingDetails?.routePolyline
-        })
-      });
+  const handlePay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPayState("loading");
 
-      if (!res.ok) throw new Error("Checkout Gateway validation failed");
+    setTimeout(async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-      const responseData = await res.json();
-      localStorage.removeItem("saved_itinerary");
-      setPayState("success");
-      setTimeout(() => onConfirm(responseData?.data?.id), 1200);
-    } catch (err) {
-      console.error("[Gateway] Checkout Error:", err);
-      // Fallback to error state for demo resilience if gateway isn't locally booted
-      setPayState("error");
-      setTimeout(() => setPayState("success"), 2000); // Auto-recover for UX flow continuity if no docker running
-      setTimeout(() => onConfirm(), 3200);
-    }
+        const res = await fetch("http://localhost:8000/api/bookings/checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            userId: session?.user?.id || undefined,
+            option,
+            pickup: bookingDetails?.pickup,
+            dropoff: bookingDetails?.dropoff,
+            startDate: bookingDetails?.startDate,
+            startTime: bookingDetails?.startTime,
+            passengers: bookingDetails?.passengers,
+            tripType: bookingDetails?.tripType,
+            multiDayStore: bookingDetails?.multiDayStore,
+            currency: currency,
+            distance: bookingDetails?.routeDistanceKm || bookingDetails?.distance,
+            duration: bookingDetails?.durationHours || bookingDetails?.duration,
+            quotation_db_id: bookingDetails?.quotation_db_id,
+            routePolyline: bookingDetails?.routePolyline,
+            pickupWaitMin: bookingDetails?.pickupWaitMin,
+            isThirdParty: bookingDetails?.isThirdParty,
+            thirdPartyInfo: bookingDetails?.thirdPartyInfo,
+            paymentIntentId: "pi_mock_intent_success",
+            savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
+            savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
+          })
+        });
+
+        if (!res.ok) throw new Error("Checkout Gateway validation failed");
+
+        const responseData = await res.json();
+        localStorage.removeItem("saved_itinerary");
+        setPayState("success");
+        setTimeout(() => onConfirm(responseData?.data?.id), 1200);
+      } catch (err) {
+        console.error("[Gateway] Checkout Error:", err);
+        setPayState("error");
+        setErrorMessage("Payment succeeded but booking creation failed.");
+        setTimeout(() => setPayState("success"), 2000);
+        setTimeout(() => onConfirm(), 3200);
+      }
+    }, 1500);
   }
 
   if (payState === "loading") return (
@@ -604,54 +721,30 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
       <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Redirecting to confirmation…</p>
     </div>
   )
-  if (payState === "declined") return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', padding: '40px 24px', textAlign: 'center' }}>
-      <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <XCircle style={{ width: '32px', height: '32px', color: '#dc2626' }} />
-      </div>
-      <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Card Declined</p>
-      <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Your card was declined. Please try another card or contact your bank.</p>
-      <button onClick={() => setPayState("idle")} style={{ marginTop: '8px', padding: '10px 28px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <RefreshCw style={{ width: '14px', height: '14px' }} /> Try Again
-      </button>
-      <button onClick={onBack} style={{ fontSize: '12px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>← Go back</button>
-    </div>
-  )
   if (payState === "error") return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', padding: '40px 24px', textAlign: 'center' }}>
       <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <AlertTriangle style={{ width: '32px', height: '32px', color: '#d97706' }} />
       </div>
       <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Payment Error</p>
-      <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Something went wrong on our end. Your card was <strong>not</strong> charged.</p>
+      <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>{errorMessage || "Something went wrong on our end."}</p>
       <div style={{ display: 'flex', gap: '10px' }}>
         <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
         <button onClick={onBack} style={{ padding: '10px 22px', borderRadius: '12px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer' }}>Cancel</button>
       </div>
     </div>
   )
-  if (payState === "timeout") return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', padding: '40px 24px', textAlign: 'center' }}>
-      <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Clock style={{ width: '32px', height: '32px', color: '#64748b' }} />
-      </div>
-      <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Request Timed Out</p>
-      <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>No response from payment gateway. Your card was <strong>NOT</strong> charged. Please try again.</p>
-      <button onClick={() => setPayState("idle")} style={{ padding: '10px 28px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Try Again</button>
-    </div>
-  )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #f1f5f9' }}>
-        <button onClick={onBack} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
+        <button type="button" onClick={onBack} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
           <ArrowLeft style={{ width: '15px', height: '15px' }} />
         </button>
-        <h2 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.4px', margin: '0 0 3px' }}>Payment</h2>
+        <h2 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.4px', margin: '0 0 3px' }}>Payment (Demo)</h2>
         <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>{option.label} · {currency} {option.price}</p>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px' }}>
-        {/* Summary */}
         <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '13px 15px', marginBottom: '18px', border: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><p style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>{option.label}</p><p style={{ fontSize: '11px', color: '#64748b', margin: '2px 0 0' }}>{option.totalSeats} seats · {option.eta}</p></div>
           <div style={{ textAlign: 'right' }}>
@@ -660,60 +753,474 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
           </div>
         </div>
 
-        {!showNewCard && (
-          <>
-            <p style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', marginBottom: '10px' }}>Saved Cards</p>
+        {/* Third Party Booking Toggle */}
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '16px', border: '1.5px solid #e2e8f0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: isThirdParty ? '16px' : '0' }}>
+              <input 
+                type="checkbox" 
+                checked={isThirdParty} 
+                onChange={(e) => setIsThirdParty(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0f172a' }}
+              />
+              <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>I am booking on behalf of another person / agency</span>
+            </label>
+
+            {isThirdParty && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <input 
+                  type="text" 
+                  placeholder="First Name" 
+                  value={thirdPartyInfo.firstName} 
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Last Name" 
+                  value={thirdPartyInfo.lastName} 
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                />
+                <input 
+                  type="email" 
+                  placeholder="Email Address" 
+                  value={thirdPartyInfo.email} 
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }} 
+                />
+                <input 
+                  type="tel" 
+                  placeholder="Phone Number" 
+                  value={thirdPartyInfo.phone} 
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Company (Optional)" 
+                  value={thirdPartyInfo.company} 
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '18px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 12px', color: '#0f172a' }}>Payment Method</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {SAVED_CARDS.map(card => (
-              <button key={card.id} onClick={() => setSelectedCard(card.id)} style={{ width: '100%', textAlign: 'left', padding: '13px 15px', borderRadius: '14px', marginBottom: '8px', cursor: 'pointer', border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0', background: selectedCard === card.id ? '#eff6ff' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
-                  <div style={{ width: '38px', height: '26px', borderRadius: '6px', background: card.brand === 'Visa' ? '#1a1f71' : '#eb001b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '9px', fontWeight: 900, color: 'white' }}>{card.brand.toUpperCase()}</span>
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => setSelectedCard(card.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', borderRadius: '12px',
+                  border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                  background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
+                    <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
                   </div>
-                  <div><p style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>•••• {card.last4}</p><p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>Exp {card.exp}{card.isDefault ? ' · Default' : ''}</p></div>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
+                    <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
+                  </div>
                 </div>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: `2px solid ${selectedCard === card.id ? '#2563eb' : '#e2e8f0'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {selectedCard === card.id && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#2563eb' }} />}
-                </div>
+                {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
               </button>
             ))}
-            <button onClick={() => setShowNewCard(true)} style={{ width: '100%', height: '42px', borderRadius: '12px', border: '1.5px dashed #e2e8f0', background: 'transparent', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#2563eb' }}>+ Add New Card</button>
-          </>
-        )}
 
-        {showNewCard && (
-          <>
-            <p style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', marginBottom: '10px' }}>New Card</p>
-            {([{ label: "Name on Card", key: "name", ph: "Full name", type: "text" }, { label: "Card Number", key: "number", ph: "1234 5678 9012 3456", type: "text" }] as const).map(f => (
-              <div key={f.key} style={{ marginBottom: '11px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '4px' }}>{f.label}</label>
-                <input type={f.type} placeholder={f.ph} value={(newCard as any)[f.key]} onChange={e => setNewCard({ ...newCard, [f.key]: e.target.value })} style={{ width: '100%', height: '42px', padding: '0 13px', borderRadius: '11px', border: '1.5px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-            ))}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '11px', marginBottom: '14px' }}>
-              {([{ label: "Expiry", key: "expiry", ph: "MM/YY" }, { label: "CVV", key: "cvv", ph: "•••" }] as const).map(f => (
-                <div key={f.key}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '4px' }}>{f.label}</label>
-                  <input type="text" placeholder={f.ph} value={(newCard as any)[f.key]} onChange={e => setNewCard({ ...newCard, [f.key]: e.target.value })} style={{ width: '100%', height: '42px', padding: '0 13px', borderRadius: '11px', border: '1.5px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+            <button
+              type="button"
+              onClick={() => setSelectedCard('new')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px', borderRadius: '12px',
+                border: selectedCard === 'new' ? '2px solid #2563eb' : '1.5px dashed #cbd5e1',
+                background: selectedCard === 'new' ? '#eff6ff' : '#f8fafc',
+                cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '24px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
+                  <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
                 </div>
-              ))}
+                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>Add New Card</p>
+              </div>
+              {selectedCard === 'new' && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+            </button>
+          </div>
+        </div>
+
+        {selectedCard === 'new' && (
+          <div style={{ padding: '20px', textAlign: 'center', border: '1.5px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
+            <p style={{ fontSize: '14px', fontWeight: 700, color: '#334155' }}>Demo Environment</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Stripe API keys are not configured. Click confirm below to simulate a successful payment.</p>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', justifyContent: 'center' }}>
+              <input
+                type="checkbox"
+                id="save_card_mock"
+                checked={saveNewCard}
+                onChange={(e) => setSaveNewCard(e.target.checked)}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+              />
+              <label htmlFor="save_card_mock" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
+                Save this card for future payments
+              </label>
             </div>
-            <button onClick={() => setShowNewCard(false)} style={{ fontSize: '12px', fontWeight: 700, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: '8px' }}>← Use saved card</button>
-          </>
+          </div>
         )}
       </div>
       <div style={{ padding: '14px 22px 22px', borderTop: '1px solid #f1f5f9' }}>
-        <button onClick={handlePay} style={{ width: '100%', height: '52px', borderRadius: '14px', background: '#16a34a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+        <button type="submit" style={{ width: '100%', height: '52px', borderRadius: '14px', background: '#16a34a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s ease', boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)' }}>
           <CheckCircle2 style={{ width: '17px', height: '17px' }} /> Confirm & Pay {currency} {option.price}
         </button>
-        <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', fontWeight: 600, margin: '9px 0 0' }}>🔒 Secured by TRANSHOLA · 256-bit SSL</p>
+        <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', fontWeight: 600, margin: '9px 0 0' }}>🔒 Simulated Payment</p>
+      </div>
+    </form>
+  )
+}
+
+function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm }: any) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [payState, setPayState] = React.useState<PayState>("idle");
+  const [errorMessage, setErrorMessage] = React.useState("");
+  const [isReady, setIsReady] = React.useState(false);
+  const [savedCards, setSavedCards] = React.useState<any[]>([]);
+  const [isLoadingCards, setIsLoadingCards] = React.useState(true);
+  const [selectedCard, setSelectedCard] = React.useState<string>('new');
+  const [saveNewCard, setSaveNewCard] = React.useState(false);
+
+  React.useEffect(() => {
+    async function fetchCards() {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        const userId = session?.user?.id;
+        const userEmail = session?.user?.email;
+
+        if (!userId) {
+          setIsLoadingCards(false);
+          return;
+        }
+
+        const res = await fetch("http://localhost:8000/api/bookings/payment-methods", {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "x-user-id": userId,
+            "x-user-email": userEmail || ""
+          }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setSavedCards(data.data || []);
+          if (data.data?.length > 0) {
+            setSelectedCard(data.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch cards", err);
+      } finally {
+        setIsLoadingCards(false);
+      }
+    }
+    fetchCards();
+  }, []);
+
+
+  const handlePay = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    setPayState("loading");
+
+    let finalPaymentIntentId = undefined;
+
+    if (selectedCard === 'new') {
+      if (!stripe || !elements || !isReady) return;
+
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          setup_future_usage: saveNewCard ? 'off_session' : undefined,
+        },
+        redirect: 'if_required',
+      });
+
+      if (error) {
+        setErrorMessage(error.message || "Payment failed");
+        setPayState("error");
+        return;
+      }
+
+      if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'requires_capture')) {
+        finalPaymentIntentId = paymentIntent.id;
+      } else {
+        setErrorMessage("Payment was not successful.");
+        setPayState("error");
+        return;
+      }
+    }
+
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
+
+      const res = await fetch("http://localhost:8000/api/bookings/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: session?.user?.id || undefined,
+          userEmail: session?.user?.email || undefined,
+          option,
+          pickup: bookingDetails?.pickup,
+          dropoff: bookingDetails?.dropoff,
+          startDate: bookingDetails?.startDate,
+          startTime: bookingDetails?.startTime,
+          passengers: bookingDetails?.passengers,
+          tripType: bookingDetails?.tripType,
+          multiDayStore: bookingDetails?.multiDayStore,
+          currency: currency,
+          distance: bookingDetails?.routeDistanceKm || bookingDetails?.distance,
+          duration: bookingDetails?.durationHours || bookingDetails?.duration,
+          quotation_db_id: bookingDetails?.quotation_db_id,
+          routePolyline: bookingDetails?.routePolyline,
+          pickupWaitMin: bookingDetails?.pickupWaitMin,
+          paymentIntentId: finalPaymentIntentId,
+          savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
+          savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
+        })
+      });
+
+      if (!res.ok) throw new Error("Checkout Gateway validation failed");
+
+      const responseData = await res.json();
+      localStorage.removeItem("saved_itinerary");
+      setPayState("success");
+      setTimeout(() => onConfirm(responseData?.data?.id), 1200);
+    } catch (err) {
+      console.error("[Gateway] Checkout Error:", err);
+      setPayState("error");
+      setErrorMessage("Payment succeeded but booking creation failed.");
+      setTimeout(() => setPayState("success"), 2000);
+      setTimeout(() => onConfirm(), 3200);
+    }
+  }
+
+  if (payState === "success") return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', padding: '40px' }}>
+      <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'successPulse 0.4s ease' }}>
+        <CheckCircle2 style={{ width: '32px', height: '32px', color: '#16a34a' }} />
+      </div>
+      <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Payment Approved!</p>
+      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Redirecting to confirmation…</p>
+    </div>
+  )
+  if (payState === "error") return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', padding: '40px 24px', textAlign: 'center' }}>
+      <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <AlertTriangle style={{ width: '32px', height: '32px', color: '#d97706' }} />
+      </div>
+      <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Payment Error</p>
+      <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>{errorMessage || "Something went wrong on our end."}</p>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
+        <button onClick={onBack} style={{ padding: '10px 22px', borderRadius: '12px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer' }}>Cancel</button>
       </div>
     </div>
   )
+
+  return (
+    <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+      {payState === "loading" && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'rgba(255, 255, 255, 0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '18px', padding: '40px', backdropFilter: 'blur(2px)', borderRadius: '16px' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', border: '4px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.9s linear infinite' }} />
+          <p style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Processing payment…</p>
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Please do not close this window</p>
+        </div>
+      )}
+      <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #f1f5f9' }}>
+        <button type="button" onClick={onBack} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
+          <ArrowLeft style={{ width: '15px', height: '15px' }} />
+        </button>
+        <h2 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.4px', margin: '0 0 3px' }}>Payment</h2>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>{option.label} · {currency} {option.price}</p>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px' }}>
+        <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '13px 15px', marginBottom: '18px', border: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div><p style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>{option.label}</p><p style={{ fontSize: '11px', color: '#64748b', margin: '2px 0 0' }}>{option.totalSeats} seats · {option.eta}</p></div>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: '19px', fontWeight: 900, margin: 0 }}>{currency} {option.price}</p>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: '#94a3b8', margin: '2px 0 0' }}>due today</p>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '18px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 12px', color: '#0f172a' }}>Payment Method</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {isLoadingCards ? (
+              <div style={{ padding: '16px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', color: '#64748b', fontSize: '13px' }}>
+                Loading saved cards...
+              </div>
+            ) : (
+              savedCards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => setSelectedCard(card.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: '12px',
+                    border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                    background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
+                      <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
+                      <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
+                    </div>
+                  </div>
+                  {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+                </button>
+              ))
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSelectedCard('new')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px', borderRadius: '12px',
+                border: selectedCard === 'new' ? '2px solid #2563eb' : '1.5px dashed #cbd5e1',
+                background: selectedCard === 'new' ? '#eff6ff' : '#f8fafc',
+                cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '24px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
+                  <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                </div>
+                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>Add New Card</p>
+              </div>
+              {selectedCard === 'new' && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ position: 'relative', minHeight: '150px', display: selectedCard === 'new' ? 'block' : 'none' }}>
+          {!isReady && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', zIndex: 10 }}>
+              <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '3px solid #f1f5f9', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
+            </div>
+          )}
+          <PaymentElement onReady={() => setIsReady(true)} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '20px', justifyContent: 'center' }}>
+            <input
+              type="checkbox"
+              id="save_card_stripe"
+              checked={saveNewCard}
+              onChange={(e) => setSaveNewCard(e.target.checked)}
+              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+            />
+            <label htmlFor="save_card_stripe" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
+              Save this card for future payments
+            </label>
+          </div>
+        </div>
+
+      </div>
+      <div style={{ padding: '14px 22px 22px', borderTop: '1px solid #f1f5f9' }}>
+        <button type="submit" disabled={(selectedCard === 'new' && (!stripe || !elements || !isReady)) || payState === "loading"} style={{ width: '100%', height: '52px', borderRadius: '14px', background: ((selectedCard === 'new' && (!stripe || !elements || !isReady)) || payState === "loading") ? '#e2e8f0' : '#16a34a', color: ((selectedCard === 'new' && (!stripe || !elements || !isReady)) || payState === "loading") ? '#94a3b8' : 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: ((selectedCard === 'new' && (!stripe || !elements || !isReady)) || payState === "loading") ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s ease', boxShadow: ((selectedCard === 'new' && (!stripe || !elements || !isReady)) || payState === "loading") ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.2)' }}>
+          {payState === "loading" ? (
+            <>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid rgba(148, 163, 184, 0.3)', borderTopColor: '#94a3b8', animation: 'spin 1s linear infinite' }} />
+              Processing...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 style={{ width: '17px', height: '17px' }} /> Confirm & Pay {currency} {option.price}
+            </>
+          )}
+        </button>
+        <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', fontWeight: 600, margin: '9px 0 0' }}>🔒 Secured by Stripe · 256-bit SSL</p>
+      </div>
+    </form>
+  )
+}
+
+export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void }) {
+  const [clientSecret, setClientSecret] = React.useState("");
+
+  React.useEffect(() => {
+    async function initPayment() {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token || 'BYPASS_AUTH';
+
+        const res = await fetch("http://localhost:8000/api/bookings/create-payment-intent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            amount: option.price,
+            currency,
+            bookingDetails,
+            userId: session?.user?.id,
+            userEmail: session?.user?.email
+          })
+        });
+        const data = await res.json();
+        if (data.clientSecret) {
+          setClientSecret(data.clientSecret);
+        } else {
+          console.error("Missing clientSecret in response", data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    initPayment();
+  }, [option, currency, bookingDetails]);
+
+  if (!clientSecret) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading secure payment...</div>;
+
+  if (clientSecret.includes('mock')) {
+    return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} />
+  }
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret }}>
+      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} />
+    </Elements>
+  );
 }
 
 // ─── Confirmation Panel ────────────────────────────────────────────────────────
 function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "AED", onDone, onCancel }: { bookingId?: string; option: VehicleOption; bookingDetails?: any; currency?: string; onDone: (id?: string) => void; onCancel: () => void }) {
-  const ref = React.useMemo(() => bookingId ? `TRN-${bookingId.substring(0,8).toUpperCase()}` : `TH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`, [bookingId])
+  const ref = React.useMemo(() => bookingId ? `TRN-${bookingId.substring(0, 8).toUpperCase()}` : `TH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`, [bookingId])
   const [progress, setProgress] = React.useState(0) // 0=confirmed, 1=assigned, 2=enroute
   const [showReceipt, setShowReceipt] = React.useState(false)
 

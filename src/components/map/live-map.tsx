@@ -258,7 +258,7 @@ function MapController({
       const lon = typeof c.lon === 'string' ? parseFloat(c.lon) : Number(c.lon);
       return typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon);
     };
-    
+
     const addIfValid = (c: any) => {
       if (isValidCoord(c)) all.push([Number(c.lat), Number(c.lon)]);
     };
@@ -279,8 +279,8 @@ function MapController({
           if (animate) map.flyTo(all[0], 15, { duration: 1.0 })
           else map.setView(all[0], 15, { animate: false })
         } else if (userLocation) {
-          if (animate) map.flyTo([Number(userLocation.lat) || 24.4539, Number(userLocation.lon) || 54.3773], 13, { duration: 1.2 })
-          else map.setView([Number(userLocation.lat) || 24.4539, Number(userLocation.lon) || 54.3773], 13, { animate: false })
+          if (animate) map.flyTo([Number(userLocation.lat) || 20, Number(userLocation.lon) || 0], 13, { duration: 1.2 })
+          else map.setView([Number(userLocation.lat) || 20, Number(userLocation.lon) || 0], 13, { animate: false })
         }
       } catch (e) {
         // ignore Leaflet unmount issues
@@ -311,6 +311,7 @@ function RoutingMachine({
   pickup,
   dropoff,
   stops,
+  tripType,
   onHistoryChange,
   onRouteFound,
   onAutoSaveTrigger,
@@ -318,8 +319,9 @@ function RoutingMachine({
   pickup: PinLocation
   dropoff: PinLocation
   stops?: StopLocation[]
+  tripType?: string
   onHistoryChange?: (histLen: number, reinstatePrev: () => void, reinstateInitial: () => void) => void
-  onRouteFound?: (durationSec: number, distanceM: number) => void
+  onRouteFound?: (durationSec: number, distanceM: number, oneWayDur?: number, oneWayDist?: number) => void
   onAutoSaveTrigger?: () => void
 }) {
   const map = useMap()
@@ -327,6 +329,11 @@ function RoutingMachine({
   // Route snapshot history: index 0 = initial
   const historyRef = React.useRef<RouteSnapshot[]>([])
   const isFirstRoute = React.useRef(true)
+
+  const tripTypeRef = React.useRef(tripType)
+  React.useEffect(() => {
+    tripTypeRef.current = tripType
+  }, [tripType])
 
   const safeRemove = (ctrl: any) => {
     try {
@@ -344,7 +351,7 @@ function RoutingMachine({
     }
   }
 
-    const buildWaypoints = React.useCallback(() => {
+  const buildWaypoints = React.useCallback(() => {
     const wps: L.LatLng[] = []
     const isValidCoord = (c: any) => {
       if (!c) return false;
@@ -352,7 +359,7 @@ function RoutingMachine({
       const lon = typeof c.lon === 'string' ? parseFloat(c.lon) : Number(c.lon);
       return typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon);
     };
-    
+
     const addIfValid = (c: any) => {
       if (isValidCoord(c)) wps.push(L.latLng(Number(c.lat), Number(c.lon)));
     };
@@ -360,9 +367,13 @@ function RoutingMachine({
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
     if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
-    
+
+    if ((tripType === 'roundtrip' || tripType === 'shuttle') && isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
+      addIfValid(pickup!.coordinate)
+    }
+
     return wps
-  }, [pickup, dropoff, stops])
+  }, [pickup, dropoff, stops, tripType])
 
   // Apply a specific set of waypoints (for reinstate)
   const applyWaypoints = React.useCallback((wps: L.LatLng[], label: string) => {
@@ -406,6 +417,47 @@ function RoutingMachine({
         extendToWaypoints: true,
         missingRouteTolerance: 10,
       },
+      routeLine: function (route: any, options: any) {
+        const type = tripTypeRef.current;
+        if ((type === 'shuttle' || type === 'roundtrip') && route.waypointIndices && route.waypointIndices.length >= 2) {
+          const splitIdx = route.waypointIndices[route.waypointIndices.length - 2];
+          const forwardCoords = route.coordinates.slice(0, splitIdx + 1);
+          const returnCoords = route.coordinates.slice(splitIdx);
+
+          const forwardTrack = L.polyline(forwardCoords, { color: "#0ea5e9", weight: 5, opacity: 0.2 });
+          const returnTrack = L.polyline(returnCoords, { color: type === 'shuttle' ? "#7c3aed" : "#f59e0b", weight: 5, opacity: 0.2 });
+
+          const forwardLine = L.polyline(forwardCoords, { color: "#0ea5e9", weight: 5, opacity: 0.9, className: "snake-forward" });
+          forwardLine.on('add', () => {
+            const el = forwardLine.getElement() as SVGPathElement;
+            if (el && el.getTotalLength) {
+              el.style.setProperty('--path-length', el.getTotalLength().toString());
+            }
+          });
+
+          const returnLine = L.polyline(returnCoords, { color: type === 'shuttle' ? "#7c3aed" : "#f59e0b", weight: 5, opacity: 0.9, className: "snake-return" });
+          returnLine.on('add', () => {
+            const el = returnLine.getElement() as SVGPathElement;
+            if (el && el.getTotalLength) {
+              el.style.setProperty('--path-length', el.getTotalLength().toString());
+            }
+          });
+
+          return L.layerGroup([forwardTrack, returnTrack, forwardLine, returnLine]);
+        }
+        
+        // One-way or standard multi-stop
+        const track = L.polyline(route.coordinates, { color: "#0ea5e9", weight: 5, opacity: 0.2 });
+        const line = L.polyline(route.coordinates, { color: "#0ea5e9", weight: 5, opacity: 0.9, className: "snake-oneway" });
+        line.on('add', () => {
+          const el = line.getElement() as SVGPathElement;
+          if (el && el.getTotalLength) {
+            el.style.setProperty('--path-length', el.getTotalLength().toString());
+          }
+        });
+        
+        return L.layerGroup([track, line]);
+      },
       createMarker: (() => null) as any,
       router: L.Routing.osrmv1({
         serviceUrl: process.env.NEXT_PUBLIC_OSRM_URL || "https://router.project-osrm.org/route/v1",
@@ -420,10 +472,29 @@ function RoutingMachine({
     control.on("routesfound", (e: any) => {
       const container = control.getContainer()
       if (container) container.style.display = "none"
-      
+
       const route = e.routes?.[0]
       if (route && onRouteFound) {
-        onRouteFound(route.summary?.totalTime ?? 0, route.summary?.totalDistance ?? 0)
+        let oneWayTime = 0;
+        let oneWayDistance = 0;
+        const type = tripTypeRef.current;
+        if ((type === 'shuttle' || type === 'roundtrip') && route.waypointIndices && route.waypointIndices.length >= 2) {
+          const splitIdx = route.waypointIndices[route.waypointIndices.length - 2];
+          if (route.instructions) {
+            for (const inst of route.instructions) {
+              if (inst.index < splitIdx) {
+                oneWayTime += (inst.time || 0);
+                oneWayDistance += (inst.distance || 0);
+              }
+            }
+          }
+        }
+        onRouteFound(
+          route.summary?.totalTime ?? 0,
+          route.summary?.totalDistance ?? 0,
+          oneWayTime || undefined,
+          oneWayDistance || undefined
+        )
         // Trigger auto-save request to parent after route is resolved
         if (onAutoSaveTrigger) onAutoSaveTrigger()
       }
@@ -443,10 +514,10 @@ function RoutingMachine({
 
     const waypoints = buildWaypoints()
     const currentWps = controlRef.current.getWaypoints().map((wp: any) => wp.latLng).filter(Boolean)
-    
+
     // Check if waypoints actually changed
     const wpsChanged = JSON.stringify(waypoints) !== JSON.stringify(currentWps)
-    
+
     if (wpsChanged) {
       if (isFirstRoute.current) {
         historyRef.current = []
@@ -469,6 +540,8 @@ export function LiveMap({
   pickup,
   dropoff,
   stops,
+  tripType,
+  shuttleVehicles = 1,
   userLocation,
   onPickupMoved,
   onDropoffMoved,
@@ -480,6 +553,8 @@ export function LiveMap({
   pickup?: any
   dropoff?: any
   stops?: StopLocation[]
+  tripType?: string
+  shuttleVehicles?: number
   userLocation?: { lat: number; lon: number } | null
   onPickupMoved?: (loc: PinLocation) => void
   onDropoffMoved?: (loc: PinLocation) => void
@@ -489,19 +564,21 @@ export function LiveMap({
   isStaticPreview?: boolean
 }) {
   const defaultCenter: [number, number] = userLocation
-    ? [Number(userLocation.lat) || 24.4539, Number(userLocation.lon) || 54.3773]
-    : [24.4539, 54.3773]
+    ? [Number(userLocation.lat) || 20, Number(userLocation.lon) || 0]
+    : [20, 0]
 
   // Route history UI state
   const [histLen, setHistLen] = React.useState(0)
   const reinstateRef = React.useRef<{ prev: () => void; initial: () => void }>({
-    prev: () => {},
-    initial: () => {},
+    prev: () => { },
+    initial: () => { },
   })
 
   // Live route metrics from RoutingMachine
   const [liveRouteDuration, setLiveRouteDuration] = React.useState<number | null>(null)
   const [liveRouteDistance, setLiveRouteDistance] = React.useState<number | null>(null)
+  const [liveOneWayDuration, setLiveOneWayDuration] = React.useState<number | null>(null)
+  const [liveOneWayDistance, setLiveOneWayDistance] = React.useState<number | null>(null)
   const [savedRoutes, setSavedRoutes] = React.useState<SavedRoute[]>([])
   const [showSaved, setShowSaved] = React.useState(false)
   const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("light")
@@ -523,17 +600,19 @@ export function LiveMap({
     ? computeSmartScore(liveRouteDuration, liveRouteDistance)
     : null
 
-  const handleRouteFound = React.useCallback((durationSec: number, distanceM: number) => {
+  const handleRouteFound = React.useCallback((durationSec: number, distanceM: number, oneWayDur?: number, oneWayDist?: number) => {
     setLiveRouteDuration(durationSec)
     setLiveRouteDistance(distanceM)
+    setLiveOneWayDuration(oneWayDur || null)
+    setLiveOneWayDistance(oneWayDist || null)
   }, [])
 
   const autoSaveRoute = React.useCallback(() => {
     if (!liveRouteDuration || !liveRouteDistance || !pickup?.coordinate || !dropoff?.coordinate) return
-    
+
     // Determine uniqueness by combined distance + duration hash
     const hash = `${Math.round(liveRouteDistance)}|${Math.round(liveRouteDuration)}`
-    
+
     setSavedRoutes(prev => {
       // Don't save if we already have this exact route profile
       if (prev.some(r => `${Math.round(r.distanceM)}|${Math.round(r.durationSec)}` === hash)) {
@@ -586,10 +665,47 @@ export function LiveMap({
             from { stroke-dashoffset: 40; }
             to { stroke-dashoffset: 0; }
         }
+        .snake-oneway {
+            stroke-dasharray: var(--path-length);
+            stroke-dashoffset: var(--path-length);
+            animation: snakeOnewayAnim 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            stroke-linecap: round;
+        }
+        @keyframes snakeOnewayAnim {
+            0% { stroke-dashoffset: var(--path-length); opacity: 1; }
+            80% { stroke-dashoffset: 0; opacity: 1; }
+            90% { stroke-dashoffset: 0; opacity: 0; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+        }
+        .snake-forward {
+            stroke-dasharray: var(--path-length);
+            stroke-dashoffset: var(--path-length);
+            animation: snakeForwardAnim 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            stroke-linecap: round;
+        }
+        .snake-return {
+            stroke-dasharray: var(--path-length);
+            stroke-dashoffset: var(--path-length);
+            animation: snakeReturnAnim 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            stroke-linecap: round;
+            opacity: 0;
+        }
+        @keyframes snakeForwardAnim {
+            0% { stroke-dashoffset: var(--path-length); opacity: 1; }
+            45% { stroke-dashoffset: 0; opacity: 1; }
+            50% { stroke-dashoffset: 0; opacity: 0; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+        }
+        @keyframes snakeReturnAnim {
+            0% { stroke-dashoffset: var(--path-length); opacity: 0; }
+            50% { stroke-dashoffset: var(--path-length); opacity: 1; }
+            95% { stroke-dashoffset: 0; opacity: 1; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+        }
       `}</style>
       <MapContainer
         center={defaultCenter}
-        zoom={userLocation ? 13 : 10}
+        zoom={userLocation ? 13 : 2}
         maxZoom={22}
         style={{ width: "100%", height: "100%" }}
         zoomControl={false}
@@ -635,12 +751,30 @@ export function LiveMap({
           />
         )}
 
+        {/* User Location Dot */}
+        {userLocation && (
+          <Marker
+            position={[Number(userLocation.lat), Number(userLocation.lon)]}
+            icon={L.divIcon({
+              className: "",
+              html: `<div style="width: 16px; height: 16px; background-color: #3b82f6; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.3);"></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            })}
+          >
+            <Popup>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Current Location</div>
+            </Popup>
+          </Marker>
+        )}
+
         {/* Route polyline (multi-waypoint) */}
         {hasRoute && (
           <RoutingMachine
             pickup={pickup}
             dropoff={dropoff}
             stops={stops}
+            tripType={tripType}
             onHistoryChange={handleHistoryChange}
             onRouteFound={handleRouteFound}
             onAutoSaveTrigger={autoSaveRoute}
@@ -654,57 +788,57 @@ export function LiveMap({
       {!isStaticPreview && (
         <div style={{
           position: "absolute", top: 16, right: 16, zIndex: 400,
-        display: "flex", flexDirection: "column", gap: 8,
-      }}>
-        <div style={{ position: "relative" }}>
-          <button 
-            onClick={() => setShowLayerMenu(!showLayerMenu)}
-            style={{
-              width: "40px", height: "40px", borderRadius: "12px",
-              background: "white", border: "1px solid #e2e8f0",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
-            }}>
-            <Layers style={{ width: "18px", height: "18px", color: showLayerMenu ? "#2563eb" : "#64748b" }} />
-          </button>
-          
-          {showLayerMenu && (
-            <div style={{
-              position: "absolute", top: 0, right: "48px",
-              background: "white", borderRadius: "12px", padding: "8px",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-              border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "4px",
-              minWidth: "150px", animation: "fadeIn 0.2s ease"
-            }}>
-               {(Object.keys(MAP_LAYERS) as Array<keyof typeof MAP_LAYERS>).map(key => (
-                 <button
-                   key={key}
-                   onClick={() => { setMapLayer(key); setShowLayerMenu(false); }}
-                   style={{
-                     padding: "8px 12px", borderRadius: "8px", border: "none",
-                     background: mapLayer === key ? "#eff6ff" : "transparent",
-                     color: mapLayer === key ? "#2563eb" : "#475569",
-                     fontWeight: mapLayer === key ? 700 : 600,
-                     fontSize: "12px", textAlign: "left", cursor: "pointer",
-                     transition: "background 0.2s"
-                   }}>
-                   {MAP_LAYERS[key].name}
-                 </button>
-               ))}
-            </div>
-          )}
-        </div>
-        <button style={{
-          width: "40px", height: "40px", borderRadius: "12px",
-          background: "white", border: "1px solid #e2e8f0",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer",
+          display: "flex", flexDirection: "column", gap: 8,
         }}>
-          <LocateFixed style={{ width: "18px", height: "18px", color: "#64748b" }} />
-        </button>
-      </div>)}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowLayerMenu(!showLayerMenu)}
+              style={{
+                width: "40px", height: "40px", borderRadius: "12px",
+                background: "white", border: "1px solid #e2e8f0",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+              }}>
+              <Layers style={{ width: "18px", height: "18px", color: showLayerMenu ? "#2563eb" : "#64748b" }} />
+            </button>
+
+            {showLayerMenu && (
+              <div style={{
+                position: "absolute", top: 0, right: "48px",
+                background: "white", borderRadius: "12px", padding: "8px",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "4px",
+                minWidth: "150px", animation: "fadeIn 0.2s ease"
+              }}>
+                {(Object.keys(MAP_LAYERS) as Array<keyof typeof MAP_LAYERS>).map(key => (
+                  <button
+                    key={key}
+                    onClick={() => { setMapLayer(key); setShowLayerMenu(false); }}
+                    style={{
+                      padding: "8px 12px", borderRadius: "8px", border: "none",
+                      background: mapLayer === key ? "#eff6ff" : "transparent",
+                      color: mapLayer === key ? "#2563eb" : "#475569",
+                      fontWeight: mapLayer === key ? 700 : 600,
+                      fontSize: "12px", textAlign: "left", cursor: "pointer",
+                      transition: "background 0.2s"
+                    }}>
+                    {MAP_LAYERS[key].name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button style={{
+            width: "40px", height: "40px", borderRadius: "12px",
+            background: "white", border: "1px solid #e2e8f0",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+          }}>
+            <LocateFixed style={{ width: "18px", height: "18px", color: "#64748b" }} />
+          </button>
+        </div>)}
 
       {/* ── Smart Route Card (top-left, appears when route is calculated) ── */}
       {!isStaticPreview && hasRoute && liveRouteDuration && liveRouteDistance && (
@@ -736,17 +870,55 @@ export function LiveMap({
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
-              <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{(liveRouteDistance / 1000).toFixed(1)} km</span>
-            </div>
+
+            {tripType === 'shuttle' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                  <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+                  <span style={{ fontSize: "10px", fontWeight: 800, color: "#7c3aed", background: "#ede9fe", padding: "2px 6px", borderRadius: "4px" }}>Round Trip Loop</span>
+                </div>
+                {liveOneWayDuration !== null && liveOneWayDistance !== null && (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                    <span style={{ fontSize: "16px", fontWeight: 800, color: "#475569" }}>{formatDur(liveOneWayDuration)}</span>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>{((liveOneWayDistance || 0) / 1000).toFixed(1)} km</span>
+                    <span style={{ fontSize: "10px", fontWeight: 700, color: "#ea580c", background: "#ffedd5", padding: "2px 6px", borderRadius: "4px" }}>One Way Trip</span>
+                  </div>
+                )}
+
+                {shuttleVehicles > 1 && (
+                  <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
+                    <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>🚌 View {shuttleVehicles} Vehicles</span>
+                      <span style={{ fontSize: "9px" }}>▼</span>
+                    </summary>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
+                      {Array.from({ length: shuttleVehicles }).map((_, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Vehicle {i + 1}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
+                <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+              </div>
+            )}
             <div style={{ display: "flex", gap: "6px" }}>
               {savedRoutes.length > 0 && (
                 <button
                   onClick={() => setShowSaved(v => !v)}
                   style={{
                     flex: 1, height: "32px", borderRadius: "8px",
-                    background: showSaved ? "#f1f5f9" : "#0f172a", 
+                    background: showSaved ? "#f1f5f9" : "#0f172a",
                     color: showSaved ? "#0f172a" : "white", border: "none",
                     fontSize: "12px", fontWeight: 700, cursor: "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
@@ -768,14 +940,14 @@ export function LiveMap({
               <p style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8", margin: "0 0 8px" }}>
                 Saved Routes (best first)
               </p>
-               {savedRoutes.map((r, idx) => {
+              {savedRoutes.map((r, idx) => {
                 // Determine if this is the currently active route based on distance/duration
-                const isActive = Math.round(liveRouteDistance || 0) === Math.round(r.distanceM) && 
-                                 Math.round(liveRouteDuration || 0) === Math.round(r.durationSec)
-                
+                const isActive = Math.round(liveRouteDistance || 0) === Math.round(r.distanceM) &&
+                  Math.round(liveRouteDuration || 0) === Math.round(r.durationSec)
+
                 return (
-                  <button 
-                    key={r.id} 
+                  <button
+                    key={r.id}
                     onClick={() => {
                       if (!isActive && onRestoreRoute) {
                         onRestoreRoute(r.pickup, r.dropoff, r.stops)

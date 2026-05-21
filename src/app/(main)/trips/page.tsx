@@ -67,39 +67,79 @@ export default function TripsPage() {
     async function loadBookings() {
       try {
         const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) {
+          setBookings([])
+          setLoading(false)
+          return
+        }
+
         // Fetch bookings and join with assigned operator from company_profiles
-        const { data, error } = await supabase.from('bookings').select('*, operator:assigned_operator_id(company_name, phone_number)')
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('*, operator:assigned_operator_id(company_name, phone_number)')
+          .eq('user_id', user.id)
+          .neq('status', 'quotation')
 
         if (error) throw error
 
         if (data) {
           const mapped: Booking[] = data.map((b: any) => {
             const now = Date.now();
-            const start = b.pickup_time ? new Date(b.pickup_time).getTime() : now;
+            const details = b.booking_details || {};
+            const tripDateStr = details.date || details.pickupDate || (details.multiDayStore ? details.multiDayStore[0]?.dateStr : null);
+            const tripTimeStr = details.time || details.pickupTime || (details.multiDayStore ? details.multiDayStore[0]?.startTime : null);
+            
+            let start = now;
+            if (b.pickup_time) {
+                start = new Date(b.pickup_time).getTime();
+            } else if (tripDateStr) {
+                const dateTimeStr = tripTimeStr ? `${tripDateStr}T${tripTimeStr}:00` : tripDateStr;
+                const parsed = new Date(dateTimeStr).getTime();
+                if (!isNaN(parsed)) start = parsed;
+            }
+
             const end = b.dropoff_time ? new Date(b.dropoff_time).getTime() : start + (2 * 60 * 60 * 1000);
+            const isMissed = !b.started_at && !b.completed_at && (b.status === "pending" || b.status === "confirmed") && now > start;
 
             let scheduleState = undefined;
-            if (b.status === "pending" || b.status === "confirmed") {
-              if (now > start) scheduleState = { label: "Missed", color: "bg-rose-100 text-rose-700 border-rose-200" };
-              else scheduleState = { label: "On Schedule", color: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+            if (isMissed) {
+                scheduleState = { label: "Missed", color: "bg-rose-100 text-rose-700 border-rose-200" };
+            } else if (b.status === "pending" || b.status === "confirmed") {
+                scheduleState = { label: "On Schedule", color: "bg-emerald-50 text-emerald-700 border-emerald-200" };
             } else if (b.status === "en_route" || b.status === "in_progress") {
               if (b.status === "en_route" && now > start) scheduleState = { label: "Late", color: "bg-amber-100 text-amber-700 border-amber-200" };
               else if (b.status === "in_progress" && now > end) scheduleState = { label: "Late", color: "bg-amber-100 text-amber-700 border-amber-200" };
               else scheduleState = { label: "On Schedule", color: "bg-emerald-50 text-emerald-700 border-emerald-200" };
             }
 
+            let computedStatus = (b.status === "pending" || b.status === "confirmed") ? "upcoming" :
+                (b.status === "in_progress" || b.status === "en_route" || b.started_at) ? "in_progress" :
+                "upcoming"; // fallback
+            
+            if (b.completed_at || b.status === "completed") {
+                computedStatus = "completed";
+            }
+            if (b.cancelled_at || b.status === "cancelled") {
+                computedStatus = "cancelled";
+            } else if (isMissed) {
+                computedStatus = "completed";
+            }
+
+            const displayDate = b.pickup_time ? new Date(b.pickup_time).toLocaleDateString() : (tripDateStr ? new Date(tripDateStr).toLocaleDateString() : "Date pending");
+            const displayTime = b.pickup_time ? new Date(b.pickup_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (tripTimeStr || "");
+
             return {
               id: b.id,
-              ref: b.booking_reference || `BK-${b.id.substring(0, 8).toUpperCase()}`,
+              ref: b.booking_ref || b.booking_reference || `BK-${b.id.substring(0, 8).toUpperCase()}`,
               vehicle: b.requested_vehicle_class || "Executive Sedan",
-              from: b.pickup_location?.address || "Pickup Location",
-              to: b.dropoff_location?.address || "Dropoff Location",
-              date: new Date(b.pickup_time || Date.now()).toLocaleDateString(),
-              time: new Date(b.pickup_time || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              from: b.booking_details?.pickup?.address || b.pickup_location || "Pickup Location",
+              to: b.booking_details?.dropoff?.address || b.dropoff_location || "Dropoff Location",
+              date: displayDate,
+              time: displayTime,
               price: `${b.booking_details?.currency || "AED"} ${b.price || b.total_amount || '0.00'}`,
-              status: (b.status === "pending" || b.status === "confirmed") ? "upcoming" :
-                (b.status === "in_progress" || b.status === "en_route") ? "in_progress" :
-                  (b.status === "completed") ? "completed" : "cancelled",
+              status: computedStatus as "upcoming" | "in_progress" | "completed" | "cancelled",
               scheduleState,
               driver: b.driver ? {
                 name: `${b.driver.first_name} ${b.driver.last_name}`,
@@ -111,7 +151,7 @@ export default function TripsPage() {
                 name: b.operator.company_name || "Network Operator",
                 phone: b.operator.phone_number || "Contact Support",
               } : undefined,
-              cancellationReason: b.status === "cancelled" ? "Cancelled by user" : undefined,
+              cancellationReason: b.status === "cancelled" || b.cancelled_at ? "Cancelled by user" : undefined,
               rawDetails: b.booking_details
             }
           })
@@ -234,8 +274,11 @@ function BookingList({ bookings, viewMode, onCancelClick }: { bookings: Booking[
             {/* Header */}
             <div className="flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-black text-base">{b.vehicle}</span>
+                  {b.rawDetails?.isThirdParty && (
+                    <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">Agency</span>
+                  )}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.color}`}>
                     {cfg.label}
                   </span>
@@ -245,6 +288,11 @@ function BookingList({ bookings, viewMode, onCancelClick }: { bookings: Booking[
                     </span>
                   )}
                 </div>
+                {b.rawDetails?.isThirdParty && b.rawDetails?.thirdPartyInfo && (
+                  <p className="text-[10px] font-medium text-slate-500 truncate mb-1">
+                    For: {b.rawDetails.thirdPartyInfo.firstName} {b.rawDetails.thirdPartyInfo.lastName} {b.rawDetails.thirdPartyInfo.company ? `(${b.rawDetails.thirdPartyInfo.company})` : ''}
+                  </p>
+                )}
                 <span className="text-[11px] text-muted-foreground font-mono">{b.ref}</span>
               </div>
               <p className="font-black text-lg">{b.price}</p>
@@ -364,6 +412,9 @@ function BookingListItem({ b, onCancelClick }: { b: Booking, onCancelClick: (id:
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-black text-base truncate max-w-[150px]">{b.vehicle}</span>
+            {b.rawDetails?.isThirdParty && (
+              <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">Agency</span>
+            )}
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${cfg.color}`}>
               {cfg.label}
             </span>
@@ -373,6 +424,11 @@ function BookingListItem({ b, onCancelClick }: { b: Booking, onCancelClick: (id:
               </span>
             )}
           </div>
+          {b.rawDetails?.isThirdParty && b.rawDetails?.thirdPartyInfo && (
+            <p className="text-[10px] font-medium text-slate-500 truncate mb-1">
+              For: {b.rawDetails.thirdPartyInfo.firstName} {b.rawDetails.thirdPartyInfo.lastName} {b.rawDetails.thirdPartyInfo.company ? `(${b.rawDetails.thirdPartyInfo.company})` : ''}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-bold uppercase tracking-wider flex-wrap">
             <span className="font-mono">{b.ref}</span>
             <span className="text-slate-300">•</span>
