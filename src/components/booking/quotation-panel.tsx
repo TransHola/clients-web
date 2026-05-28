@@ -2,10 +2,9 @@
 
 import * as React from "react"
 import {
-  ArrowLeft, Users, ShieldCheck, Zap, Info,
-  BookmarkPlus, CreditCard, CheckCircle2, Clock, AlertTriangle,
-  RefreshCw, XCircle, Download, MapPin, ArrowRight, Eye, X
+  Users, Briefcase, Zap, ShieldCheck, CheckCircle2, ChevronDown, ChevronRight, Droplets, Wifi, Coffee, Baby, MapPin, Grid, Info, Clock, RefreshCw, BookmarkPlus, CreditCard, ArrowLeft, XCircle, Download, ArrowRight, Eye, X, AlertTriangle
 } from "lucide-react"
+import { createPortal } from "react-dom"
 import { ReceiptModal } from "./receipt-modal"
 import { CancellationModal } from "./cancellation-modal"
 import { createClient } from "@/lib/supabase/client"
@@ -110,6 +109,8 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 }) {
   const [options, setOptions] = React.useState<VehicleOption[]>([]);
   const [currency, setCurrency] = React.useState<string>("USD");
+  const [currencySymbol, setCurrencySymbol] = React.useState<string>("");
+  const [globalTaxes, setGlobalTaxes] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
   React.useEffect(() => {
@@ -124,14 +125,22 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
           tripType,
+          roundTripMode: bookingDetails?.roundTripMode,
+          routeLegs: bookingDetails?.routeLegs,
+          startDate: bookingDetails?.startDate,
+          startTime: bookingDetails?.startTime,
+          endDate: bookingDetails?.endDate,
+          endTime: bookingDetails?.endTime,
           countryCode: bookingDetails?.countryCode || 'US',
           passengers,
           routeDistanceKm,
+          returnDistanceKm: bookingDetails?.returnDistanceKm,
+          returnDurationHours: bookingDetails?.returnDurationHours,
           durationHours: bookingDetails?.duration ? bookingDetails.duration / 3600 : undefined,
           multiDayStore: bookingDetails?.multiDayStore
         };
 
-        const res = await fetch("http://localhost:8000/api/bookings/calculate", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/calculate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -146,6 +155,8 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         const returnedOptions = data.data?.options || [];
         setOptions(returnedOptions);
         if (data.data?.currency) setCurrency(data.data.currency);
+        if (data.data?.currencySymbol) setCurrencySymbol(data.data.currencySymbol);
+        if (data.data?.taxes) setGlobalTaxes(data.data.taxes);
 
         if (bookingDetails?.option) {
           const match = returnedOptions.find((o: any) => o.id === bookingDetails.option.id || o.label === bookingDetails.option.label);
@@ -200,10 +211,11 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
     // Always allow saving as quote, just adjust the expiration
     return { expiresAt: _expiresAt, canSaveAsQuote: true };
-  }, [expirationHours, bookingDetails]);
+  }, [expirationHours, bookingDetails?.startDate, bookingDetails?.startTime]);
 
   const countdown = useCountdown(expiresAt);
   const [showAdvanced, setShowAdvanced] = React.useState(false)
+  const [showMixed, setShowMixed] = React.useState(false)
 
   // Smart scrolling header state
   const headerRef = React.useRef<HTMLDivElement>(null)
@@ -219,7 +231,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "BYPASS_AUTH";
 
-      const res = await fetch("http://localhost:8000/api/bookings/quotation", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/quotation`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -265,8 +277,15 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
   // Bubble selection to parent for 3-pane layout
   React.useEffect(() => {
-    if (onSelectionChange) onSelectionChange(selected)
-  }, [selected])
+    if (onSelectionChange) {
+      if (selected) {
+        const daysCount = tripType === 'multi-day' ? Math.max(1, bookingDetails?.multiDayStore?.length || 1) : 1;
+        onSelectionChange({ ...selected, daysCount, bookingDetails, globalTaxes });
+      } else {
+        onSelectionChange(null);
+      }
+    }
+  }, [selected, tripType, bookingDetails?.multiDayStore?.length, onSelectionChange, globalTaxes])
 
   // Measure header height so the sticky selected item can sit neatly below it
   React.useEffect(() => {
@@ -299,24 +318,116 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [])
 
-  const logicalOptions = options.filter(o => o.vehicles.length === 1 && o.vehicles[0]?.count === 1)
-  const advancedOptions = logicalOptions.length > 0
-    ? options.filter(o => o.vehicles.length > 1 || (o.vehicles.length === 1 && o.vehicles[0]?.count > 1))
-    : []
+  // Split options by mixed service vs single service
+  const singleServiceOptions = options.filter((o: any) => !o.isMixedService);
+  const mixedServiceOptions = options.filter((o: any) => o.isMixedService);
 
-  // Ensure we at least show something if there are no uniform fleets
-  const shown = logicalOptions.length > 0 ? logicalOptions : options
+  // Show the top 4 AI-ranked single-service choices directly on the main feed
+  const shown = singleServiceOptions.slice(0, 4)
+
+  // Place any additional single-service choices into the Advanced Combinations drawer
+  const advancedOptions = singleServiceOptions.slice(4)
 
   if (step === "payment" && selected) {
-    return <MockCheckoutForm option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id: string) => { setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+    return <PaymentPanel option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id: string) => { setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
   }
-  
+
   if (step === "confirmed" && selected) return (
     <>
-      <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id) => onSelect(id)} onCancel={() => setShowCancel(true)} />
+      <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id: string) => onSelect(id)} onCancel={() => setShowCancel(true)} />
       {showCancel && <CancellationModal onClose={() => setShowCancel(false)} onConfirmed={() => { setShowCancel(false); onSelect() }} />}
     </>
   )
+
+  const renderOption = (opt: any) => {
+    const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
+    const isSelected = selected?.id === opt.id
+    const tagColors: Record<string, { bg: string; text: string }> = {
+      "CO2 Efficient": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
+      "Best Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
+      "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
+      "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
+    }
+    const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
+
+    return (
+      <button key={opt.id} onClick={() => setSelected(opt)} style={{
+        width: '100%', textAlign: 'left', padding: '24px 16px 16px', borderRadius: '16px', cursor: 'pointer',
+        border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
+        background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
+        boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: isSelected ? 'sticky' : 'relative',
+        top: isSelected ? (headerVisible ? `${headerHeight + 12}px` : '12px') : 'auto',
+        zIndex: isSelected ? 5 : 1,
+        transform: isSelected ? 'scale(1.01)' : 'scale(1)',
+        display: 'flex', alignItems: 'center', gap: '14px', overflow: 'hidden'
+      }}>
+        {/* Service Category Corner Badge */}
+        <div style={{ position: 'absolute', top: 0, left: 0, padding: '4px 10px', background: isSelected ? '#3b82f6' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', borderRadius: '0 0 10px 0', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', zIndex: 2 }}>
+          {opt.serviceCategory || (opt.isMixedService ? "Mixed Fleet" : "Standard Fleet")}
+        </div>
+
+        {/* Icon Container */}
+        <div style={{ position: 'relative', width: '70px', height: '48px', borderRadius: '12px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9', marginTop: '8px' }}>
+          {opt.vehicles.length > 1 ? (
+            <div style={{ position: 'relative', width: '54px', height: '36px' }}>
+              <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
+                {React.createElement(VEHICLE_ICONS[opt.vehicles[1]?.iconName || opt.vehicles[1]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 32 })}
+              </div>
+              <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
+                {React.createElement(VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 40 })}
+              </div>
+            </div>
+          ) : (
+            <>
+              <Icon color={isSelected ? '#2563eb' : '#64748b'} size={42} />
+              {opt.vehicles[0]?.count > 1 && (
+                <div style={{ position: 'absolute', top: '-6px', right: '-6px', padding: '2px 6px', borderRadius: '10px', background: isSelected ? '#1d4ed8' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid white' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>×{opt.vehicles[0].count}</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Core Info & Price */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {opt.vehicles.length > 1 ? (
+                opt.vehicles.map((v: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
+                      {v.count}× {v.label || v.type}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.2 }}>{opt.label}</span>
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+              <p style={{ fontSize: '17px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px', lineHeight: 1 }}>{currencySymbol || currency} {opt.price}</p>
+              {opt.tag && tc && (
+                <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>{opt.tag}</span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <Users style={{ width: '11px', height: '11px', color: '#94a3b8' }} /> {opt.totalSeats} seats
+              </span>
+            </div>
+          </div>
+        </div>
+      </button>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -335,7 +446,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         </button>
         <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: '0 0 3px' }}>Choose your ride</h2>
         <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, margin: 0 }}>
-          {tripType === 'shuttle' ? `${passengers} vehicle${passengers > 1 ? 's' : ''}` : `${passengers} passenger${passengers > 1 ? 's' : ''}`} · {routeDistanceKm} km · {currency}
+          {tripType === 'shuttle' ? `${passengers} vehicle${passengers > 1 ? 's' : ''}` : `${passengers} passenger${passengers > 1 ? 's' : ''}`} · {routeDistanceKm} {(bookingDetails?.countryCode?.toUpperCase() === 'US' || bookingDetails?.countryCode?.toUpperCase() === 'GB') ? 'mi' : 'km'} · {currency}
         </p>
 
         {/* Shuttle route direction display */}
@@ -426,175 +537,55 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           </>
         ) : (
           <>
-            {shown.map(opt => {
-              const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
-              const isSelected = selected?.id === opt.id
-              const tagColors: Record<string, { bg: string; text: string }> = {
-                "Eco Friendly": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
-                "Best Value": { bg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', text: 'white' },
-                "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
-                "Lowest Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
-                "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
-              }
-              const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
-
-              return (
-                <button key={opt.id} onClick={() => setSelected(opt)} style={{
-                  width: '100%', textAlign: 'left', padding: '16px 18px', borderRadius: '20px', cursor: 'pointer',
-                  border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
-                  background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
-                  boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  position: isSelected ? 'sticky' : 'relative',
-                  top: isSelected ? (headerVisible ? `${headerHeight + 12}px` : '12px') : 'auto',
-                  zIndex: isSelected ? 5 : 1,
-                  transform: isSelected ? 'scale(1.01)' : 'scale(1)',
-                  display: 'flex', flexDirection: 'column', gap: '12px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                    {/* Icon Container */}
-                    <div style={{ position: 'relative', width: '80px', height: '56px', borderRadius: '14px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9' }}>
-                      {opt.vehicles.length > 1 ? (
-                        <div style={{ position: 'relative', width: '60px', height: '40px' }}>
-                          <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
-                            {React.createElement(VEHICLE_ICONS[opt.vehicles[1].iconName || opt.vehicles[1].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
-                          </div>
-                          <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
-                            {React.createElement(VEHICLE_ICONS[opt.vehicles[0].iconName || opt.vehicles[0].type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <Icon color={isSelected ? '#2563eb' : '#64748b'} size={48} />
-                          {opt.vehicles[0]?.count > 1 && (
-                            <div style={{ position: 'absolute', top: '-8px', right: '-8px', padding: '3px 8px', borderRadius: '12px', background: isSelected ? '#1d4ed8' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid white' }}>
-                              <span style={{ fontSize: '12px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>×{opt.vehicles[0].count}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-
-                    {/* Core Info */}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{opt.label}</span>
-                        {opt.tag && tc && <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 9px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>{opt.tag}</span>}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b', fontWeight: 600, flexWrap: 'wrap' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.totalSeats} seats</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.eta}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldCheck style={{ width: '12px', height: '12px', color: '#10b981' }} />Verified</span>
-                      </div>
-                    </div>
-
-                    {/* Price */}
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <p style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>{currency} {opt.price}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, margin: '2px 0 0' }}>Incl. VAT</p>
-                    </div>
+            {shown.length > 0 && (
+              <div style={{ marginBottom: '32px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck style={{ width: '14px', height: '14px', color: '#2563eb' }} />
                   </div>
+                  <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Recommended Fleet</h3>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {shown.map(opt => renderOption(opt))}
+                </div>
+              </div>
+            )}
 
-                  {/* Category & Breakdown Row */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                      {opt.serviceCategory || "Standard Fleet"}
-                    </span>
-
-                    {opt.vehicles.length > 1 && (
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {opt.vehicles.map((v, i) => {
-                          const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
-                          return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
-                        })}
-                      </div>
-                    )}
+            {mixedServiceOptions.length > 0 && (
+              <div style={{ marginBottom: '32px' }}>
+                <button onClick={() => setShowMixed(!showMixed)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: '0', marginBottom: showMixed ? '14px' : '0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <RefreshCw style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                    </div>
+                    <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Mixed Services</h3>
                   </div>
+                  <ChevronDown style={{ width: '18px', height: '18px', color: '#94a3b8', transform: showMixed ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
                 </button>
-              )
-            })}
+                {showMixed && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', animation: 'fadeIn 0.3s ease' }}>
+                    {mixedServiceOptions.map(opt => renderOption(opt))}
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* Advanced Combinations Revealer */}
             {advancedOptions.length > 0 && (
-              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  style={{ width: '100%', padding: '12px', background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '16px', color: '#475569', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s' }}
-                >
-                  <RefreshCw style={{ width: '14px', height: '14px', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
-                  {showAdvanced ? "Hide Advanced Combinations" : `View Advanced Combinations (${advancedOptions.length})`}
+              <div style={{ marginBottom: '16px' }}>
+                <button onClick={() => setShowAdvanced(!showAdvanced)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: '0', marginBottom: showAdvanced ? '14px' : '0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Grid style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                    </div>
+                    <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Advanced Combinations</h3>
+                  </div>
+                  <ChevronDown style={{ width: '18px', height: '18px', color: '#94a3b8', transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />
                 </button>
-
-                {showAdvanced && advancedOptions.map(opt => {
-                  const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
-                  const isSelected = selected?.id === opt.id
-                  const tagColors: Record<string, { bg: string; text: string }> = {
-                    "Eco Friendly": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
-                    "Best Value": { bg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', text: 'white' },
-                    "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
-                    "Lowest Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
-                    "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
-                  }
-                  const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
-
-                  return (
-                    <button key={opt.id} onClick={() => setSelected(opt)} style={{
-                      width: '100%', textAlign: 'left', padding: '16px 18px', borderRadius: '20px', cursor: 'pointer',
-                      border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
-                      background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
-                      boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
-                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      display: 'flex', flexDirection: 'column', gap: '12px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                        {/* Icon Container */}
-                        <div style={{ position: 'relative', width: '80px', height: '56px', borderRadius: '14px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9' }}>
-                          <div style={{ position: 'relative', width: '60px', height: '40px' }}>
-                            <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
-                              {React.createElement(VEHICLE_ICONS[opt.vehicles[1]?.iconName || opt.vehicles[1]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 36 })}
-                            </div>
-                            <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
-                              {React.createElement(VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 44 })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Core Info */}
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{opt.label}</span>
-                            {opt.tag && tc && <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 9px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>{opt.tag}</span>}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b', fontWeight: 600, flexWrap: 'wrap' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.totalSeats} seats</span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock style={{ width: '12px', height: '12px', color: '#94a3b8' }} />{opt.eta}</span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldCheck style={{ width: '12px', height: '12px', color: '#10b981' }} />Verified</span>
-                          </div>
-                        </div>
-
-                        {/* Price */}
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <p style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>{currency} {opt.price}</p>
-                          <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, margin: '2px 0 0' }}>Incl. VAT</p>
-                        </div>
-                      </div>
-
-                      {/* Category & Breakdown Row */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '2px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                          {opt.serviceCategory || "Mixed Fleet"}
-                        </span>
-
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {opt.vehicles.map((v, i) => {
-                            const VI = VEHICLE_ICONS[v.iconName || v.type] || VEHICLE_ICONS.sedan
-                            return <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#475569', background: '#f8fafc', borderRadius: '8px', padding: '3px 8px', border: '1px solid #e2e8f0' }}><VI color="#64748b" size={16} />{v.count}×</span>
-                          })}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
+                {showAdvanced && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', animation: 'fadeIn 0.3s ease' }}>
+                    {advancedOptions.map(opt => renderOption(opt))}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -605,38 +596,65 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
       {/* Footer */}
       {selected && (
-        <div style={{ padding: '14px 22px 24px', borderTop: '1px solid #f1f5f9', background: 'white', display: 'flex', flexDirection: 'column', gap: '8px', position: 'sticky', bottom: 0, zIndex: 10 }}>
-          {savedAsQuote && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 13px', borderRadius: '10px', background: '#fefce8', border: '1px solid #fef08a' }}>
-              <Clock style={{ width: '13px', height: '13px', color: '#ca8a04' }} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e' }}>Quote saved — expires <span style={{ color: '#dc2626' }}>{countdown}</span></span>
+        <FooterPortal>
+          <div style={{ padding: '14px 22px 24px', borderTop: '1px solid #f1f5f9', background: 'white', display: 'flex', flexDirection: 'column', gap: '8px', position: 'sticky', bottom: 0, zIndex: 10 }}>
+            {savedAsQuote && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 13px', borderRadius: '10px', background: '#fefce8', border: '1px solid #fef08a' }}>
+                <Clock style={{ width: '13px', height: '13px', color: '#ca8a04' }} />
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e' }}>Quote saved — expires <span style={{ color: '#dc2626' }}>{countdown}</span></span>
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '9px 13px', borderRadius: '10px', background: '#f8fafc', border: '1px dashed #e2e8f0' }}>
+              <Info style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0, marginTop: '1px' }} />
+              {canSaveAsQuote ? (
+                <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Quote valid until {expiresAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>
+              ) : (
+                <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Trip starts too soon to save quote. Book now.</p>
+              )}
             </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '9px 13px', borderRadius: '10px', background: '#f8fafc', border: '1px dashed #e2e8f0' }}>
-            <Info style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0, marginTop: '1px' }} />
-            {canSaveAsQuote ? (
-              <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Quote valid until {expiresAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>
-            ) : (
-              <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Trip starts too soon to save quote. Book now.</p>
+            <button onClick={() => setStep("payment")} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currencySymbol || currency} {selected.price}
+            </button>
+            {canSaveAsQuote && (
+              <button onClick={handleSaveQuote} disabled={isSavingQuote || savedAsQuote} style={{ width: '100%', height: '44px', borderRadius: '14px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                {isSavingQuote ? (
+                  <RefreshCw className="animate-spin" style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                ) : (
+                  <BookmarkPlus style={{ width: '14px', height: '14px', color: '#2563eb' }} />
+                )}
+                {savedAsQuote ? 'Quote Saved ✓' : isSavingQuote ? 'Saving...' : 'Save as Quotation'}
+              </button>
             )}
           </div>
-          <button onClick={() => setStep("payment")} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currency} {selected.price}
-          </button>
-          {canSaveAsQuote && (
-            <button onClick={handleSaveQuote} disabled={isSavingQuote || savedAsQuote} style={{ width: '100%', height: '44px', borderRadius: '14px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
-              {isSavingQuote ? (
-                <RefreshCw className="animate-spin" style={{ width: '14px', height: '14px', color: '#64748b' }} />
-              ) : (
-                <BookmarkPlus style={{ width: '14px', height: '14px', color: '#2563eb' }} />
-              )}
-              {savedAsQuote ? 'Quote Saved ✓' : isSavingQuote ? 'Saving...' : 'Save as Quotation'}
-            </button>
-          )}
-        </div>
+        </FooterPortal>
       )}
     </div>
   )
+}
+
+function FooterPortal({ children }: { children: React.ReactNode }) {
+  const [target, setTarget] = React.useState<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    const checkTarget = () => {
+      const el = document.getElementById('vehicle-details-footer-portal');
+      if (el) {
+        setTarget(el);
+        if (interval) clearInterval(interval);
+      }
+    };
+    checkTarget();
+    interval = setInterval(checkTarget, 200);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (target) {
+    return createPortal(children, target);
+  }
+
+  // Fallback to inline rendering if side panel isn't open
+  return <>{children}</>;
 }
 
 // ─── Payment State Machine ─────────────────────────────────────────────────────
@@ -646,8 +664,48 @@ const SAVED_CARDS: any[] = []
 function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: any) {
   const [payState, setPayState] = React.useState<PayState>("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
-  const [selectedCard, setSelectedCard] = React.useState<string>(SAVED_CARDS[0]?.id || 'new');
+  const [savedCards, setSavedCards] = React.useState<any[]>([]);
+  const [isLoadingCards, setIsLoadingCards] = React.useState(true);
+  const [selectedCard, setSelectedCard] = React.useState<string>('new');
   const [saveNewCard, setSaveNewCard] = React.useState(false);
+
+  React.useEffect(() => {
+    async function fetchCards() {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        const userId = session?.user?.id;
+        const userEmail = session?.user?.email;
+
+        if (!userId) {
+          setIsLoadingCards(false);
+          return;
+        }
+
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "x-user-id": userId,
+            "x-user-email": userEmail || ""
+          }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setSavedCards(data.data || []);
+          if (data.data?.length > 0) {
+            setSelectedCard(data.data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch cards", err);
+      } finally {
+        setIsLoadingCards(false);
+      }
+    }
+    fetchCards();
+  }, []);
 
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -659,7 +717,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-        const res = await fetch("http://localhost:8000/api/bookings/checkout", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -757,9 +815,9 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
         <div style={{ marginBottom: '18px' }}>
           <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '16px', border: '1.5px solid #e2e8f0' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: isThirdParty ? '16px' : '0' }}>
-              <input 
-                type="checkbox" 
-                checked={isThirdParty} 
+              <input
+                type="checkbox"
+                checked={isThirdParty}
                 onChange={(e) => setIsThirdParty(e.target.checked)}
                 style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0f172a' }}
               />
@@ -768,40 +826,40 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
 
             {isThirdParty && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <input 
-                  type="text" 
-                  placeholder="First Name" 
-                  value={thirdPartyInfo.firstName} 
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={thirdPartyInfo.firstName}
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
                 />
-                <input 
-                  type="text" 
-                  placeholder="Last Name" 
-                  value={thirdPartyInfo.lastName} 
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={thirdPartyInfo.lastName}
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
                 />
-                <input 
-                  type="email" 
-                  placeholder="Email Address" 
-                  value={thirdPartyInfo.email} 
+                <input
+                  type="email"
+                  placeholder="Email Address"
+                  value={thirdPartyInfo.email}
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
                 />
-                <input 
-                  type="tel" 
-                  placeholder="Phone Number" 
-                  value={thirdPartyInfo.phone} 
+                <input
+                  type="tel"
+                  placeholder="Phone Number"
+                  value={thirdPartyInfo.phone}
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
                 />
-                <input 
-                  type="text" 
-                  placeholder="Company (Optional)" 
-                  value={thirdPartyInfo.company} 
+                <input
+                  type="text"
+                  placeholder="Company (Optional)"
+                  value={thirdPartyInfo.company}
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }} 
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
                 />
               </div>
             )}
@@ -811,31 +869,37 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
         <div style={{ marginBottom: '18px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 12px', color: '#0f172a' }}>Payment Method</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {SAVED_CARDS.map(card => (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => setSelectedCard(card.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 14px', borderRadius: '12px',
-                  border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
-                  background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
-                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                    <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+            {isLoadingCards ? (
+              <div style={{ padding: '16px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', color: '#64748b', fontSize: '13px' }}>
+                Loading saved cards...
+              </div>
+            ) : (
+              savedCards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => setSelectedCard(card.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: '12px',
+                    border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                    background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
+                      <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
+                      <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
-                    <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
-                  </div>
-                </div>
-                {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
-              </button>
-            ))}
+                  {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+                </button>
+              ))
+            )}
 
             <button
               type="button"
@@ -889,7 +953,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
   )
 }
 
-function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm }: any) {
+function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: any) {
   const stripe = useStripe();
   const elements = useElements();
   const [payState, setPayState] = React.useState<PayState>("idle");
@@ -914,7 +978,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           return;
         }
 
-        const res = await fetch("http://localhost:8000/api/bookings/payment-methods", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -977,7 +1041,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-      const res = await fetch("http://localhost:8000/api/bookings/checkout", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1069,6 +1133,61 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           </div>
         </div>
 
+        {/* Third Party Booking Toggle */}
+        <div style={{ marginBottom: '18px' }}>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '16px', border: '1.5px solid #e2e8f0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: isThirdParty ? '16px' : '0' }}>
+              <input
+                type="checkbox"
+                checked={isThirdParty}
+                onChange={(e) => setIsThirdParty && setIsThirdParty(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0f172a' }}
+              />
+              <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>I am booking on behalf of another person / agency</span>
+            </label>
+
+            {isThirdParty && setThirdPartyInfo && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={thirdPartyInfo?.firstName || ""}
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={thirdPartyInfo?.lastName || ""}
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                />
+                <input
+                  type="email"
+                  placeholder="Email Address"
+                  value={thirdPartyInfo?.email || ""}
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone Number"
+                  value={thirdPartyInfo?.phone || ""}
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Company (Optional)"
+                  value={thirdPartyInfo?.company || ""}
+                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
         <div style={{ marginBottom: '18px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 12px', color: '#0f172a' }}>Payment Method</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1126,27 +1245,29 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           </div>
         </div>
 
-        <div style={{ position: 'relative', minHeight: '150px', display: selectedCard === 'new' ? 'block' : 'none' }}>
-          {!isReady && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', zIndex: 10 }}>
-              <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '3px solid #f1f5f9', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
-            </div>
-          )}
-          <PaymentElement onReady={() => setIsReady(true)} />
+        {selectedCard === 'new' && (
+          <div style={{ position: 'relative', minHeight: '150px' }}>
+            {!isReady && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', zIndex: 10 }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '3px solid #f1f5f9', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
+              </div>
+            )}
+            <PaymentElement onReady={() => setIsReady(true)} />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '20px', justifyContent: 'center' }}>
-            <input
-              type="checkbox"
-              id="save_card_stripe"
-              checked={saveNewCard}
-              onChange={(e) => setSaveNewCard(e.target.checked)}
-              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
-            />
-            <label htmlFor="save_card_stripe" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
-              Save this card for future payments
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '20px', justifyContent: 'center' }}>
+              <input
+                type="checkbox"
+                id="save_card_stripe"
+                checked={saveNewCard}
+                onChange={(e) => setSaveNewCard(e.target.checked)}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+              />
+              <label htmlFor="save_card_stripe" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
+                Save this card for future payments
+              </label>
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
       <div style={{ padding: '14px 22px 22px', borderTop: '1px solid #f1f5f9' }}>
@@ -1168,7 +1289,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
   )
 }
 
-export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void }) {
+export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
   const [clientSecret, setClientSecret] = React.useState("");
 
   React.useEffect(() => {
@@ -1178,7 +1299,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || 'BYPASS_AUTH';
 
-        const res = await fetch("http://localhost:8000/api/bookings/create-payment-intent", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/create-payment-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1208,12 +1329,12 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
   if (!clientSecret) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading secure payment...</div>;
 
   if (clientSecret.includes('mock')) {
-    return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} />
+    return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
   }
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} />
+      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
     </Elements>
   );
 }
