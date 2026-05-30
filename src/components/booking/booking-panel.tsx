@@ -2276,6 +2276,21 @@ export function BookingPanel({
                     );
                   })}
 
+                  {/* ── ADD STOP BUTTON ── */}
+                  <div className="loc-row-sep" />
+                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' }}>
+                    <button onClick={() => addStop()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 14px', borderRadius: '20px', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
+                      <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Add a stop
+                    </button>
+                    {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
+                        {formatDistance(routeDistance, clientGeoContext.countryCode)} total · {formatDuration(routeDuration)}
+                      </span>
+                    )}
+                  </div>
+
                   {/* ── DROPOFF ROW ── */}
                   <div className="loc-row-sep" />
                   <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined, alignItems: 'center' }}>
@@ -2362,20 +2377,7 @@ export function BookingPanel({
                     );
                   })()}
 
-                  {/* ── ADD STOP BUTTON ── */}
-                  <div className="loc-row-sep" />
-                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' }}>
-                    <button onClick={() => addStop()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 14px', borderRadius: '20px', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
-                      <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Add a stop
-                    </button>
-                    {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
-                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
-                        {formatDistance(routeDistance, clientGeoContext.countryCode)} total · {formatDuration(routeDuration)}
-                      </span>
-                    )}
-                  </div>
+
 
                   {/* ── RETURN (Continuous Round Trip) ── */}
                   {showReturn && !isShuttle && roundTripMode === 'continuous' && (
