@@ -329,12 +329,12 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   const advancedOptions = singleServiceOptions.slice(4)
 
   if (step === "payment" && selected) {
-    return <PaymentPanel option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id: string) => { setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+    return <PaymentPanel option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id?: string) => { if(id) setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
   }
 
   if (step === "confirmed" && selected) return (
     <>
-      <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id: string) => onSelect(id)} onCancel={() => setShowCancel(true)} />
+      <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id?: string) => onSelect(id)} onCancel={() => setShowCancel(true)} />
       {showCancel && <CancellationModal onClose={() => setShowCancel(false)} onConfirmed={() => { setShowCancel(false); onSelect() }} />}
     </>
   )
@@ -661,7 +661,7 @@ function FooterPortal({ children }: { children: React.ReactNode }) {
 type PayState = "idle" | "loading" | "success" | "declined" | "error" | "timeout"
 const SAVED_CARDS: any[] = []
 
-function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: any) {
+function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
   const [payState, setPayState] = React.useState<PayState>("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
@@ -949,7 +949,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
   )
 }
 
-function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: any) {
+function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
   const stripe = useStripe();
   const elements = useElements();
   const [payState, setPayState] = React.useState<PayState>("idle");

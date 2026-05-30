@@ -38,6 +38,7 @@ export interface PinLocation {
   address: string
   name?: string
   coordinate: { lat: number; lon: number }
+  countryCode?: string
 }
 
 export interface StopLocation {
@@ -115,6 +116,7 @@ async function reverseGeocode(lat: number, lon: number): Promise<PinLocation> {
       address: data.display_name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
       name: name || undefined,
       coordinate: { lat, lon },
+      countryCode: data.address?.country_code?.toUpperCase(),
     }
   } catch {
     return {
@@ -549,6 +551,7 @@ export function LiveMap({
   onRestoreRoute,
   pinsLocked,
   isStaticPreview = false,
+  countryCode,
 }: {
   pickup?: any
   dropoff?: any
@@ -562,10 +565,20 @@ export function LiveMap({
   onRestoreRoute?: (pickup: PinLocation, dropoff: PinLocation, stops: StopLocation[]) => void
   pinsLocked?: boolean
   isStaticPreview?: boolean
+  countryCode?: string
 }) {
   const defaultCenter: [number, number] = userLocation
     ? [Number(userLocation.lat) || 20, Number(userLocation.lon) || 0]
     : [20, 0]
+
+  const formatDistance = (distanceMeters: number) => {
+    const cCode = (countryCode || pickup?.countryCode || 'US').toUpperCase();
+    const isMiles = cCode === 'US' || cCode === 'GB' || cCode === 'LR' || cCode === 'MM';
+    if (isMiles) {
+      return `${(distanceMeters * 0.000621371).toFixed(1)} mi`;
+    }
+    return `${(distanceMeters / 1000).toFixed(1)} km`;
+  }
 
   // Route history UI state
   const [histLen, setHistLen] = React.useState(0)
@@ -875,13 +888,13 @@ export function LiveMap({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
                   <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
                   <span style={{ fontSize: "10px", fontWeight: 800, color: "#7c3aed", background: "#ede9fe", padding: "2px 6px", borderRadius: "4px" }}>Round Trip Loop</span>
                 </div>
                 {liveOneWayDuration !== null && liveOneWayDistance !== null && (
                   <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
                     <span style={{ fontSize: "16px", fontWeight: 800, color: "#475569" }}>{formatDur(liveOneWayDuration)}</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>{((liveOneWayDistance || 0) / 1000).toFixed(1)} km</span>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveOneWayDistance || 0)}</span>
                     <span style={{ fontSize: "10px", fontWeight: 700, color: "#ea580c", background: "#ffedd5", padding: "2px 6px", borderRadius: "4px" }}>One Way Trip</span>
                   </div>
                 )}
@@ -898,7 +911,7 @@ export function LiveMap({
                           <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Vehicle {i + 1}</span>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveRouteDistance || 0)}</span>
                           </div>
                         </div>
                       ))}
@@ -909,7 +922,7 @@ export function LiveMap({
             ) : (
               <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
                 <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{((liveRouteDistance || 0) / 1000).toFixed(1)} km</span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
               </div>
             )}
             <div style={{ display: "flex", gap: "6px" }}>
@@ -973,7 +986,7 @@ export function LiveMap({
                         {isActive && <span style={{ fontSize: "10px", fontWeight: 700, color: "white", background: "#2563eb", padding: "1px 5px", borderRadius: "4px", marginLeft: "4px" }}>Active</span>}
                       </p>
                       <p style={{ fontSize: "11px", color: isActive ? "#3b82f6" : "#64748b", margin: "2px 0 0" }}>
-                        {formatDur(r.durationSec)} · {(r.distanceM / 1000).toFixed(1)} km
+                        {formatDur(r.durationSec)} · {formatDistance(r.distanceM)}
                       </p>
                     </div>
                     <div style={{

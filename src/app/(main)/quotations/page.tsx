@@ -35,12 +35,22 @@ export default function QuotationsPage() {
         const { data: { session } } = await supabase.auth.getSession()
         const userId = session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34"
 
-        const { data, error } = await supabase
+        const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').single()
+        
+        let query = supabase
           .from("bookings")
           .select("*")
           .eq("user_id", userId)
-          .eq("status", "quotation")
           .order("created_at", { ascending: false })
+
+        if (statusData) {
+            query = query.eq("status_id", statusData.id)
+        } else {
+            // Fallback if DB doesn't have status_id yet
+            query = query.eq("status", "quotation")
+        }
+        
+        const { data, error } = await query
 
         if (error) throw error
 

@@ -52,8 +52,11 @@ export default function TripsPage() {
     setIsCancelling(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', cancellingId)
-      if (error) throw error
+      const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'cancelled').single()
+      if (statusData) {
+        const { error } = await supabase.from('bookings').update({ status_id: statusData.id }).eq('id', cancellingId)
+        if (error) throw error
+      }
       setBookings(prev => prev.map(b => b.id === cancellingId ? { ...b, status: 'cancelled', cancellationReason: 'Cancelled by user' } : b))
       setCancellingId(null)
     } catch (e) {
@@ -76,16 +79,29 @@ export default function TripsPage() {
         }
 
         // Fetch bookings and join with assigned operator from company_profiles
-        const { data, error } = await supabase
+        const { data: statusesData } = await supabase.from('booking_statuses').select('id, code')
+        const quotationId = statusesData?.find(s => s.code === 'quotation')?.id
+        const statusMap = Object.fromEntries(statusesData?.map(s => [s.id, s.code]) || [])
+
+        // Fetch bookings and join with assigned operator from company_profiles
+        let query = supabase
           .from('bookings')
           .select('*, operator:assigned_operator_id(company_name, phone_number)')
           .eq('user_id', user.id)
-          .neq('status', 'quotation')
+
+        if (quotationId) {
+            query = query.neq('status_id', quotationId)
+        }
+
+        const { data, error } = await query
 
         if (error) throw error
 
         if (data) {
           const mapped: Booking[] = data.map((b: any) => {
+            const statusCode = statusMap[b.status_id] || 'pending';
+            b.status = statusCode; // polyfill for existing logic
+
             const now = Date.now();
             const details = b.booking_details || {};
             const tripDateStr = details.date || details.pickupDate || (details.multiDayStore ? details.multiDayStore[0]?.dateStr : null);

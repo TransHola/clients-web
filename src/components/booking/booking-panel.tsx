@@ -34,6 +34,14 @@ function formatDuration(seconds: number): string {
   return `${m} min`
 }
 
+function formatDistance(distanceMeters: number, countryCode?: string): string {
+  const isMiles = countryCode === 'US' || countryCode === 'GB' || countryCode === 'LR' || countryCode === 'MM';
+  if (isMiles) {
+    return `${(distanceMeters * 0.000621371).toFixed(1)} mi`;
+  }
+  return `${(distanceMeters / 1000).toFixed(1)} km`;
+}
+
 function addSecondsToDatetime(dateStr: string, timeStr: string, seconds: number): { date: string; time: string } {
   if (!dateStr || !timeStr) return { date: dateStr, time: timeStr }
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -2171,7 +2179,7 @@ export function BookingPanel({
                               }
                               return (
                                 <span style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
-                                  Depart at {result.time}{daySuffix}
+                                  Depart at {formatTimeStr(result.time)}{daySuffix}
                                 </span>
                               );
                             }
@@ -2249,7 +2257,6 @@ export function BookingPanel({
                         {stop.loc && legInfo && (
                           <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700 }}>Wait time:</span>
                               <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
                                 {legInfo.eta ? (() => {
                                   const [h, m] = legInfo.eta.time.split(':').map(Number);
@@ -2259,7 +2266,7 @@ export function BookingPanel({
                               </span>
                               {legInfo.eta && (
                                 <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', fontWeight: 600 }}>
-                                  Arrive {formatTimeStr(legInfo.eta.time)} · {(legInfo.distance / 1000).toFixed(1)} km
+                                  Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
                                 </span>
                               )}
                             </div>
@@ -2336,7 +2343,6 @@ export function BookingPanel({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {hasWait && (
                             <>
-                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700 }}>Wait time:</span>
                               <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
                                 {legInfo.eta ? (() => {
                                   const [h, m] = legInfo.eta.time.split(':').map(Number);
@@ -2348,7 +2354,7 @@ export function BookingPanel({
                           )}
                           {legInfo.eta && (
                             <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: hasWait ? 'auto' : 0, fontWeight: 600 }}>
-                              {hasWait ? '' : '🏁 '}Arrive {formatTimeStr(legInfo.eta.time)} · {(legInfo.distance / 1000).toFixed(1)} km
+                              {hasWait ? '' : '🏁 '}Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
                             </span>
                           )}
                         </div>
@@ -2366,7 +2372,7 @@ export function BookingPanel({
                     </button>
                     {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
                       <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
-                        {(routeDistance / 1000).toFixed(1)} km total · {formatDuration(routeDuration)}
+                        {formatDistance(routeDistance, clientGeoContext.countryCode)} total · {formatDuration(routeDuration)}
                       </span>
                     )}
                   </div>

@@ -104,6 +104,7 @@ function AddPaymentMethodForm({ onSuccess, onCancel }: { onSuccess: () => void, 
 export default function BillingPage() {
   const [invoiceFilter, setInvoiceFilter] = React.useState<"all" | "paid" | "open" | "overdue">("all")
   const [invoices, setInvoices] = React.useState<any[]>([])
+  const [payments, setPayments] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(true)
   const [loadingMethods, setLoadingMethods] = React.useState(true)
   const [paymentMethods, setPaymentMethods] = React.useState(INITIAL_PAYMENT_METHODS)
@@ -143,34 +144,35 @@ export default function BillingPage() {
       try {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
         const userId = session?.user?.id
-        const userEmail = session?.user?.email
         
         if (!userId) {
           setLoading(false)
           return
         }
 
-        const res = await fetch("http://localhost:8000/api/bookings/invoices", {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "x-user-id": userId,
-            "x-user-email": userEmail || ""
-          }
-        })
-        
-        if (res.ok) {
-          const json = await res.json()
-          setInvoices(json.data || [])
-        }
+        const { data, error } = await supabase.from('invoices').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) throw error;
+        setInvoices(data || []);
       } catch (err) {
         console.error("Failed to load invoices:", err)
       } finally {
         setLoading(false)
       }
     }
+
+    async function loadPayments() {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const userId = session?.user?.id
+      if (userId) {
+        const { data } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        setPayments(data || []);
+      }
+    }
+
     loadInvoices()
+    loadPayments()
     fetchPaymentMethods()
   }, [fetchPaymentMethods])
 
@@ -240,6 +242,7 @@ export default function BillingPage() {
       <Tabs defaultValue="invoices" className="flex-col">
         <TabsList className="w-full max-w-md bg-muted/50 rounded-xl h-11 p-1 mb-6">
           <TabsTrigger value="invoices" className="flex-1 rounded-lg text-xs font-bold data-[state=active]:bg-background data-[state=active]:shadow-sm">Invoices</TabsTrigger>
+          <TabsTrigger value="payments" className="flex-1 rounded-lg text-xs font-bold data-[state=active]:bg-background data-[state=active]:shadow-sm">Payments History</TabsTrigger>
           <TabsTrigger value="payment_methods" className="flex-1 rounded-lg text-xs font-bold data-[state=active]:bg-background data-[state=active]:shadow-sm">Payment Methods</TabsTrigger>
         </TabsList>
 
@@ -320,6 +323,27 @@ export default function BillingPage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="payments" className="space-y-6">
+          <div className="flex flex-col gap-3">
+            {payments.length === 0 ? (
+              <div className="py-12 flex flex-col items-center justify-center text-muted-foreground border rounded-2xl border-dashed">
+                <CreditCard className="w-8 h-8 mb-4 text-slate-300" />
+                <p className="text-sm font-medium">No payments found.</p>
+              </div>
+            ) : payments.map((p: any) => (
+              <div key={p.id} className="rounded-2xl border bg-card p-4 flex justify-between items-center">
+                <div>
+                  <p className="font-bold">{new Date(p.created_at).toLocaleDateString()}</p>
+                  <p className="text-sm text-slate-500 uppercase">{p.provider} - {p.status}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-lg">${Number(p.amount).toFixed(2)}</p>
+                  {p.receipt_url && <a href={p.receipt_url} target="_blank" rel="noreferrer" className="text-blue-500 text-xs font-bold hover:underline">View Receipt</a>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
         <TabsContent value="payment_methods">
           <div className="flex flex-col gap-3 mb-5">
             {loadingMethods ? (
