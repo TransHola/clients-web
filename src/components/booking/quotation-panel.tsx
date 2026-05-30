@@ -140,7 +140,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           multiDayStore: bookingDetails?.multiDayStore
         };
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/calculate`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/calculate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -231,7 +231,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "BYPASS_AUTH";
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/quotation`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/quotation`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -683,7 +683,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -717,7 +717,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -974,7 +974,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -1053,7 +1053,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1308,7 +1308,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || 'BYPASS_AUTH';
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/create-payment-intent`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/create-payment-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

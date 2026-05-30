@@ -42,6 +42,12 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                     </p>
                   </div>
                 </div>
+                {v.price !== undefined && (
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '15px', fontWeight: 800, margin: '0', color: '#0f172a' }}>{option.currencySymbol || option.currency || '$'} {v.price * v.count}</p>
+                    {v.count > 1 && <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>{option.currencySymbol || option.currency || '$'}{v.price} /ea</p>}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -132,6 +138,29 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
             </div>
           )
         })}
+
+        {/* Financial Summary */}
+        <div style={{ marginTop: '8px', padding: '16px', borderRadius: '14px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+          <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', margin: '0 0 12px' }}>Pricing Breakdown</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
+              <span>Subtotal (Vehicles)</span>
+              <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {option.vehicles ? option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0) : option.price}</span>
+            </div>
+            {option.price > (option.vehicles ? option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0) : option.price) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569' }}>
+                <span>Taxes & Fees</span>
+                <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {(option.price - option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0)).toFixed(2)}</span>
+              </div>
+            )}
+            <div style={{ borderTop: '1px dashed #cbd5e1', margin: '4px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: '#0f172a', fontWeight: 800 }}>
+              <span>Total</span>
+              <span>{option.currencySymbol || option.currency || '$'} {option.price}</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {adaRequired && (
@@ -152,15 +181,18 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
 
       {/* Trust Elements - Pinned Static Footer */}
       <div style={{ flexShrink: 0, padding: '16px 24px 24px 24px', background: 'white', borderTop: '1px solid #f1f5f9' }}>
-        <div style={{ padding: '14px', borderRadius: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+        <div style={{ padding: '14px', borderRadius: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <CheckCircle2 style={{ width: '16px', height: '16px', color: '#16a34a' }} />
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#15803d' }}>Price Guarantee</span>
           </div>
           <p style={{ fontSize: '11px', color: '#166534', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
-            Your quoted price of <strong>{option.currency || 'USD'} {option.price}</strong> is locked in. Inclusive of all taxes, tolls, and standard fees.
+            Your quoted price of <strong>{option.currencySymbol || option.currency || '$'} {option.price}</strong> is locked in. Inclusive of all taxes, tolls, and standard fees.
           </p>
         </div>
+
+        {/* Portal Target for Booking Buttons */}
+        <div id="vehicle-details-footer-target"></div>
       </div>
     </div>
   )
