@@ -3397,6 +3397,8 @@ export function BookingPanel({
                       pickup: pickupLoc,
                       dropoffValue: finalDropoffValue,
                       dropoff: finalDropoffLoc,
+                      returnValue: showReturn && roundTripMode === 'continuous' ? returnValue : undefined,
+                      returnLoc: showReturn && roundTripMode === 'continuous' ? returnLoc : undefined,
                       startDate,
                       startTime,
                       endDate,
