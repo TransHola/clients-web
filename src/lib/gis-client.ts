@@ -1,5 +1,5 @@
 export class GisClient {
-    private static baseUrl = process.env.NEXT_PUBLIC_GIS_BASE_URL || 'http://localhost:4000/api/v1/gis';
+    private static baseUrl = process.env.NEXT_PUBLIC_GIS_API_URL ? `${process.env.NEXT_PUBLIC_GIS_API_URL}/api/gis` : 'http://localhost:4000/api/v1/gis';
 
     static async geocode(query: string, bias?: { lat: number, lon: number }) {
         if (!query || query.length < 3) return [];
