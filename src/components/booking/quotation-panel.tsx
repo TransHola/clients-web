@@ -140,7 +140,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           multiDayStore: bookingDetails?.multiDayStore
         };
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/calculate`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/calculate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -231,7 +231,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "BYPASS_AUTH";
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/quotation`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/quotation`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -683,7 +683,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -717,7 +717,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -928,17 +928,13 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
             <p style={{ fontSize: '14px', fontWeight: 700, color: '#334155' }}>Demo Environment</p>
             <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Stripe API keys are not configured. Click confirm below to simulate a successful payment.</p>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', justifyContent: 'center' }}>
-              <input
-                type="checkbox"
-                id="save_card_mock"
-                checked={saveNewCard}
-                onChange={(e) => setSaveNewCard(e.target.checked)}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
-              />
-              <label htmlFor="save_card_mock" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
-                Save this card for future payments
-              </label>
+            <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <Info style={{ width: '16px', height: '16px', color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
+                <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
+                  <strong>Securely stored for your convenience.</strong> We save your card details securely with Stripe to enable seamless processing of this trip, overages, or future bookings.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -978,7 +974,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/payment-methods`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -1013,13 +1009,27 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
     if (selectedCard === 'new') {
       if (!stripe || !elements || !isReady) return;
 
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          setup_future_usage: saveNewCard ? 'off_session' : undefined,
-        },
-        redirect: 'if_required',
-      });
+      let error, paymentIntent, setupIntent;
+
+      if (intentType === 'setup') {
+        const result = await stripe.confirmSetup({
+          elements,
+          confirmParams: {},
+          redirect: 'if_required',
+        });
+        error = result.error;
+        setupIntent = result.setupIntent;
+      } else {
+        const result = await stripe.confirmPayment({
+          elements,
+          confirmParams: {
+            setup_future_usage: 'off_session',
+          },
+          redirect: 'if_required',
+        });
+        error = result.error;
+        paymentIntent = result.paymentIntent;
+      }
 
       if (error) {
         setErrorMessage(error.message || "Payment failed");
@@ -1027,7 +1037,9 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
         return;
       }
 
-      if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'requires_capture')) {
+      if (intentType === 'setup' && setupIntent && setupIntent.status === 'succeeded') {
+        finalPaymentIntentId = undefined;
+      } else if (intentType !== 'setup' && paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'requires_capture')) {
         finalPaymentIntentId = paymentIntent.id;
       } else {
         setErrorMessage("Payment was not successful.");
@@ -1041,7 +1053,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/checkout`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1066,7 +1078,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           pickupWaitMin: bookingDetails?.pickupWaitMin,
           paymentIntentId: finalPaymentIntentId,
           savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
-          savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
+          savePaymentMethod: selectedCard === 'new' ? true : false,
         })
       });
 
@@ -1254,17 +1266,13 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
             )}
             <PaymentElement onReady={() => setIsReady(true)} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '20px', justifyContent: 'center' }}>
-              <input
-                type="checkbox"
-                id="save_card_stripe"
-                checked={saveNewCard}
-                onChange={(e) => setSaveNewCard(e.target.checked)}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
-              />
-              <label htmlFor="save_card_stripe" style={{ fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
-                Save this card for future payments
-              </label>
+            <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <Info style={{ width: '16px', height: '16px', color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
+                <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
+                  <strong>Securely stored for your convenience.</strong> We save your card details securely with Stripe to enable seamless processing of this trip, overages, or future bookings.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -1291,6 +1299,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
 
 export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
   const [clientSecret, setClientSecret] = React.useState("");
+  const [intentType, setIntentType] = React.useState("payment");
 
   React.useEffect(() => {
     async function initPayment() {
@@ -1299,7 +1308,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || 'BYPASS_AUTH';
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/api/bookings/create-payment-intent`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/create-payment-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1309,6 +1318,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
             amount: option.price,
             currency,
             bookingDetails,
+            countryCode: bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || 'GLOBAL',
             userId: session?.user?.id,
             userEmail: session?.user?.email
           })
@@ -1316,6 +1326,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
         const data = await res.json();
         if (data.clientSecret) {
           setClientSecret(data.clientSecret);
+          setIntentType(data.intentType || "payment");
         } else {
           console.error("Missing clientSecret in response", data);
         }
@@ -1334,7 +1345,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} intentType={intentType} />
     </Elements>
   );
 }
