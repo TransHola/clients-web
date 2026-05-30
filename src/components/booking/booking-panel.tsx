@@ -2259,7 +2259,7 @@ export function BookingPanel({
                         {/* Stop leg info */}
                         {stop.loc && legInfo && (
                           <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                               <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
                                 {legInfo.eta ? (() => {
                                   const [h, m] = legInfo.eta.time.split(':').map(Number);
@@ -2268,7 +2268,7 @@ export function BookingPanel({
                                 })() : 'Depart time...'}
                               </span>
                               {legInfo.eta && (
-                                <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', fontWeight: 600 }}>
+                                <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
                                   Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
                                 </span>
                               )}
@@ -2361,7 +2361,7 @@ export function BookingPanel({
                     const hasWait = tripType !== 'one-way' && dropoffWaitMin > 0;
                     return (
                       <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                           {hasWait && (
                             <>
                               <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
@@ -2374,7 +2374,7 @@ export function BookingPanel({
                             </>
                           )}
                           {legInfo.eta && (
-                            <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: hasWait ? 'auto' : 0, fontWeight: 600 }}>
+                            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
                               {hasWait ? '' : '🏁 '}Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
                             </span>
                           )}
@@ -2447,7 +2447,7 @@ export function BookingPanel({
                         {/* Stop leg info */}
                         {stop.loc && legInfo && (
                           <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                               <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
                                 {legInfo.eta ? (() => {
                                   const [h, m] = legInfo.eta.time.split(':').map(Number);
@@ -2456,7 +2456,7 @@ export function BookingPanel({
                                 })() : 'Depart time...'}
                               </span>
                               {legInfo.eta && (
-                                <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', fontWeight: 600 }}>
+                                <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
                                   Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
                                 </span>
                               )}
