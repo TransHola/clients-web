@@ -367,11 +367,18 @@ function RoutingMachine({
     };
 
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
-    stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
-    if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
-
-    if ((tripType === 'roundtrip' || tripType === 'shuttle') && isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
-      addIfValid(pickup!.coordinate)
+    
+    if (tripType === 'roundtrip' || tripType === 'shuttle') {
+      // In a round trip, dropoff is the main destination, stops are on the way back (or rather, after the dropoff)
+      if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
+      stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
+      if (isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
+        addIfValid(pickup!.coordinate)
+      }
+    } else {
+      // One-way: stops are on the way to the dropoff
+      stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
+      if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
     }
 
     return wps

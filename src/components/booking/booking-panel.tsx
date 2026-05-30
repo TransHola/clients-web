@@ -2197,6 +2197,9 @@ export function BookingPanel({
                     </div>
                   )}
 
+
+                  {!(showReturn && !isShuttle && roundTripMode === 'continuous') && (
+                    <React.Fragment>
                   {/* ── INTERMEDIATE STOPS ── */}
                   {stops.map((stop, idx) => {
                     const legInfo = getLegEtaInfo(idx);
@@ -2291,6 +2294,9 @@ export function BookingPanel({
                     )}
                   </div>
 
+
+                    </React.Fragment>
+                  )}
                   {/* ── DROPOFF ROW ── */}
                   <div className="loc-row-sep" />
                   <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined, alignItems: 'center' }}>
@@ -2379,6 +2385,106 @@ export function BookingPanel({
 
 
 
+
+                  {(showReturn && !isShuttle && roundTripMode === 'continuous') && (
+                    <React.Fragment>
+                  {/* ── INTERMEDIATE STOPS ── */}
+                  {stops.map((stop, idx) => {
+                    const legInfo = getLegEtaInfo(idx);
+                    return (
+                      <div key={stop.id} style={{ animation: 'slideDown 0.2s ease' }}>
+                        <div className="loc-row-sep" />
+                        <div className="loc-row" style={{ paddingTop: '4px', paddingBottom: '4px' }}>
+                          <div className="loc-dot-stop">
+                            <span style={{ fontSize: '7px', color: 'white', fontWeight: 900 }}>{idx + 1}</span>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <LocationSearchInput
+                              placeholder={`Stop ${idx + 1}`}
+                              value={stop.address}
+                              bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
+                              onSelect={(loc) => { updateStop(stop.id, { address: loc.address, loc }); saveRecentLocation(loc); }}
+                            />
+                          </div>
+                          {/* Wait Time Controls inline */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '4px' }}>
+                            {(() => {
+                              const unit = stopDurationUnit[stop.id] || 'min';
+                              const isHr = unit === 'hr';
+                              const displayVal = isHr ? parseFloat((stop.stopDurationMin / 60).toFixed(2)) : stop.stopDurationMin;
+                              const step = isHr ? 0.5 : 1;
+                              const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
+
+                              const handleWaitChange = (newMin: number) => {
+                                const validNewMin = Math.max(0, newMin);
+                                const deltaMin = validNewMin - stop.stopDurationMin;
+                                updateStop(stop.id, { stopDurationMin: validNewMin });
+
+                                if (tripType === 'roundtrip' && endDate && endTime) {
+                                  const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
+                                  setEndDate(shifted.date);
+                                  setEndTime(shifted.time);
+                                }
+                              };
+
+                              return (
+                                <>
+                                  <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                  <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ddd6fe', fontSize: '12px', fontWeight: 800, outline: 'none', boxSizing: 'border-box' }} />
+                                  <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd6fe', height: '24px' }}>
+                                    <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'min' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#7c3aed' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
+                                    <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'hr' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #ddd6fe', cursor: 'pointer', background: isHr ? '#7c3aed' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
+                                  </div>
+                                  <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          <button onClick={() => removeStop(stop.id)} title="Remove stop" style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1.5px solid #fecaca', background: '#fff5f5', cursor: 'pointer', color: '#ef4444', fontSize: '15px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                        </div>
+
+                        {/* Stop leg info */}
+                        {stop.loc && legInfo && (
+                          <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                                {legInfo.eta ? (() => {
+                                  const [h, m] = legInfo.eta.time.split(':').map(Number);
+                                  const totalMin = h * 60 + m + stop.stopDurationMin;
+                                  return `Depart at ${formatTimeStr(`${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`)}`;
+                                })() : 'Depart time...'}
+                              </span>
+                              {legInfo.eta && (
+                                <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', fontWeight: 600 }}>
+                                  Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.countryCode)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* ── ADD STOP BUTTON ── */}
+                  <div className="loc-row-sep" />
+                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' }}>
+                    <button onClick={() => addStop()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 14px', borderRadius: '20px', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
+                      <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Add a stop
+                    </button>
+                    {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
+                        {formatDistance(routeDistance, clientGeoContext.countryCode)} total · {formatDuration(routeDuration)}
+                      </span>
+                    )}
+                  </div>
+
+
+                    </React.Fragment>
+                  )}
                   {/* ── RETURN (Continuous Round Trip) ── */}
                   {showReturn && !isShuttle && roundTripMode === 'continuous' && (
                     <>
