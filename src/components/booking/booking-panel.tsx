@@ -2114,68 +2114,69 @@ export function BookingPanel({
                           }}
                         />
                       </div>
+
+                      {/* Pickup Wait Time Controls inline */}
+                      {tripType !== 'shuttle' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '8px' }}>
+                          {(() => {
+                            const isHr = pickupWaitUnit === 'hr';
+                            const displayVal = isHr ? parseFloat((pickupWaitMin / 60).toFixed(2)) : pickupWaitMin;
+                            const step = isHr ? 0.5 : 5;
+                            const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
+
+                            const handleWaitChange = (newMin: number) => {
+                              const validNewMin = Math.max(0, newMin);
+                              const deltaMin = validNewMin - pickupWaitMin;
+                              setPickupWaitMin(validNewMin);
+
+                              if (tripType === 'roundtrip' && endDate && endTime) {
+                                const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
+                                setEndDate(shifted.date);
+                                setEndTime(shifted.time);
+                              }
+                            };
+
+                            return (
+                              <>
+                                <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 800, color: '#0f172a', outline: 'none', boxSizing: 'border-box' }} />
+                                <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #cbd5e1', height: '24px' }}>
+                                  <button onClick={() => setPickupWaitUnit('min')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#3b82f6' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
+                                  <button onClick={() => setPickupWaitUnit('hr')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #cbd5e1', cursor: 'pointer', background: isHr ? '#3b82f6' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
+                                </div>
+                                <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Pickup Wait Time */}
+                    {/* Pickup Depart Message */}
                     {pickupLoc && (
-                      <div style={{ margin: '-2px 14px 8px', padding: '8px 10px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', animation: 'slideDown 0.2s ease' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700 }}>Wait time before depart</span>
-                            {(() => {
-                              const activeDateStr = (tripType === 'multi-day' || tripType === 'roundtrip') ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
-                              const activeTimeStr = (tripType === 'multi-day' || tripType === 'roundtrip') ? (multiDayStore[activeDayIdx]?.startTime || startTime) : startTime;
-                              if (activeDateStr && activeTimeStr) {
-                                const result = addSecondsToDatetime(activeDateStr, activeTimeStr, pickupWaitMin * 60);
-                                let daySuffix = '';
-                                if (result.date !== activeDateStr) {
-                                  const origDate = new Date(`${activeDateStr}T00:00:00`);
-                                  const newDate = new Date(`${result.date}T00:00:00`);
-                                  const diffDays = Math.round((newDate.getTime() - origDate.getTime()) / (1000 * 3600 * 24));
-                                  if (diffDays === 1) daySuffix = ' (Next day)';
-                                  else if (diffDays > 1) daySuffix = ` (+${diffDays} days)`;
-                                }
-                                return (
-                                  <span style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600, marginTop: '2px' }}>
-                                    Depart at {result.time}{daySuffix}
-                                  </span>
-                                );
+                      <div style={{ padding: '4px 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {(() => {
+                            const activeDateStr = (tripType === 'multi-day' || tripType === 'roundtrip') ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                            const activeTimeStr = (tripType === 'multi-day' || tripType === 'roundtrip') ? (multiDayStore[activeDayIdx]?.startTime || startTime) : startTime;
+                            if (activeDateStr && activeTimeStr) {
+                              const result = addSecondsToDatetime(activeDateStr, activeTimeStr, pickupWaitMin * 60);
+                              let daySuffix = '';
+                              if (result.date !== activeDateStr) {
+                                const origDate = new Date(`${activeDateStr}T00:00:00`);
+                                const newDate = new Date(`${result.date}T00:00:00`);
+                                const diffDays = Math.round((newDate.getTime() - origDate.getTime()) / (1000 * 3600 * 24));
+                                if (diffDays === 1) daySuffix = ' (Next day)';
+                                else if (diffDays > 1) daySuffix = ` (+${diffDays} days)`;
                               }
-                              return null;
-                            })()}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            {(() => {
-                              const isHr = pickupWaitUnit === 'hr';
-                              const displayVal = isHr ? parseFloat((pickupWaitMin / 60).toFixed(2)) : pickupWaitMin;
-                              const step = isHr ? 0.5 : 5;
-                              const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
-
-                              const handleWaitChange = (newMin: number) => {
-                                const validNewMin = Math.max(0, newMin);
-                                const deltaMin = validNewMin - pickupWaitMin;
-                                setPickupWaitMin(validNewMin);
-
-                                if (tripType === 'roundtrip' && endDate && endTime) {
-                                  const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                  setEndDate(shifted.date);
-                                  setEndTime(shifted.time);
-                                }
-                              };
-
                               return (
-                                <>
-                                  <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                  <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 800, color: '#0f172a', outline: 'none', boxSizing: 'border-box' }} />
-                                  <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #cbd5e1', height: '24px' }}>
-                                    <button onClick={() => setPickupWaitUnit('min')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#3b82f6' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
-                                    <button onClick={() => setPickupWaitUnit('hr')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #cbd5e1', cursor: 'pointer', background: isHr ? '#3b82f6' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
-                                  </div>
-                                  <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                                </>
+                                <span style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
+                                  Depart at {result.time}{daySuffix}
+                                </span>
                               );
-                            })()}
-                          </div>
+                            }
+                            return null;
+                          })()}
                         </div>
                       </div>
                     )}
@@ -2206,72 +2207,61 @@ export function BookingPanel({
                               onSelect={(loc) => { updateStop(stop.id, { address: loc.address, loc }); saveRecentLocation(loc); }}
                             />
                           </div>
+                          {/* Wait Time Controls inline */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '4px' }}>
+                            {(() => {
+                              const unit = stopDurationUnit[stop.id] || 'min';
+                              const isHr = unit === 'hr';
+                              const displayVal = isHr ? parseFloat((stop.stopDurationMin / 60).toFixed(2)) : stop.stopDurationMin;
+                              const step = isHr ? 0.5 : 1;
+                              const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
+
+                              const handleWaitChange = (newMin: number) => {
+                                const validNewMin = Math.max(0, newMin);
+                                const deltaMin = validNewMin - stop.stopDurationMin;
+                                updateStop(stop.id, { stopDurationMin: validNewMin });
+
+                                if (tripType === 'roundtrip' && endDate && endTime) {
+                                  const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
+                                  setEndDate(shifted.date);
+                                  setEndTime(shifted.time);
+                                }
+                              };
+
+                              return (
+                                <>
+                                  <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                  <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ddd6fe', fontSize: '12px', fontWeight: 800, outline: 'none', boxSizing: 'border-box' }} />
+                                  <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd6fe', height: '24px' }}>
+                                    <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'min' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#7c3aed' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
+                                    <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'hr' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #ddd6fe', cursor: 'pointer', background: isHr ? '#7c3aed' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
+                                  </div>
+                                  <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                </>
+                              );
+                            })()}
+                          </div>
+
                           <button onClick={() => removeStop(stop.id)} title="Remove stop" style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1.5px solid #fecaca', background: '#fff5f5', cursor: 'pointer', color: '#ef4444', fontSize: '15px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                         </div>
 
-                        {/* Stop duration & leg info */}
+                        {/* Stop leg info */}
                         {stop.loc && legInfo && (
-                          <div style={{ margin: '-2px 14px 8px', padding: '8px 10px', borderRadius: '10px', background: '#faf5ff', border: '1px solid #ede9fe', animation: 'slideDown 0.2s ease' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                              <span style={{ fontSize: '11px', color: '#6d28d9', fontWeight: 700 }}>Stop duration</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                {(() => {
-                                  const unit = stopDurationUnit[stop.id] || 'min';
-                                  const isHr = unit === 'hr';
-                                  const displayVal = isHr ? parseFloat((stop.stopDurationMin / 60).toFixed(2)) : stop.stopDurationMin;
-                                  const step = isHr ? 0.5 : 1;
-                                  const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
-
-                                  const handleWaitChange = (newMin: number) => {
-                                    const validNewMin = Math.max(0, newMin);
-                                    const deltaMin = validNewMin - stop.stopDurationMin;
-                                    updateStop(stop.id, { stopDurationMin: validNewMin });
-
-                                    if (tripType === 'roundtrip' && endDate && endTime) {
-                                      const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                      setEndDate(shifted.date);
-                                      setEndTime(shifted.time);
-                                    }
-                                  };
-
-                                  return (
-                                    <>
-                                      <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                      <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ddd6fe', fontSize: '12px', fontWeight: 800, outline: 'none', boxSizing: 'border-box' }} />
-                                      <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd6fe', height: '24px' }}>
-                                        <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'min' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#7c3aed' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
-                                        <button onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: 'hr' }))} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #ddd6fe', cursor: 'pointer', background: isHr ? '#7c3aed' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
-                                      </div>
-                                      <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px', background: 'white', borderRadius: '6px', padding: '6px', border: '1px solid #ddd6fe' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Distance</span>
-                                <span style={{ fontSize: '11px', color: '#0f172a', fontWeight: 600 }}>{(legInfo.distance / 1000).toFixed(1)} km</span>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Duration</span>
-                                <span style={{ fontSize: '11px', color: '#0f172a', fontWeight: 600 }}>{Math.round(legInfo.duration / 60)} min</span>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Arrive</span>
-                                <span style={{ fontSize: '11px', color: '#0f172a', fontWeight: 600 }}>{legInfo.eta ? formatTimeStr(legInfo.eta.time) : '--:--'}</span>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Depart</span>
-                                <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 600 }}>
-                                  {legInfo.eta ? (() => {
-                                    const [h, m] = legInfo.eta.time.split(':').map(Number);
-                                    const totalMin = h * 60 + m + stop.stopDurationMin;
-                                    return formatTimeStr(`${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`);
-                                  })() : '--:--'}
+                          <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700 }}>Wait time:</span>
+                              <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                                {legInfo.eta ? (() => {
+                                  const [h, m] = legInfo.eta.time.split(':').map(Number);
+                                  const totalMin = h * 60 + m + stop.stopDurationMin;
+                                  return `Depart at ${formatTimeStr(`${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`)}`;
+                                })() : 'Depart time...'}
+                              </span>
+                              {legInfo.eta && (
+                                <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: 'auto', fontWeight: 600 }}>
+                                  Arrive {formatTimeStr(legInfo.eta.time)} · {(legInfo.distance / 1000).toFixed(1)} km
                                 </span>
-                              </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -2279,24 +2269,9 @@ export function BookingPanel({
                     );
                   })}
 
-                  {/* ── ADD STOP BUTTON ── */}
-                  <div className="loc-row-sep" />
-                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' }}>
-                    <button onClick={() => addStop()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 14px', borderRadius: '20px', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
-                      <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Add a stop
-                    </button>
-                    {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
-                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
-                        {(routeDistance / 1000).toFixed(1)} km total · {formatDuration(routeDuration)}
-                      </span>
-                    )}
-                  </div>
-
                   {/* ── DROPOFF ROW ── */}
                   <div className="loc-row-sep" />
-                  <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined }}>
+                  <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined, alignItems: 'center' }}>
                     <div className={showReturn && !isShuttle && roundTripMode === 'continuous' ? 'loc-dot-stop' : 'loc-dot-dropoff'}
                       style={{ borderRadius: showReturn && !isShuttle && roundTripMode === 'continuous' ? '3px' : '3px', background: showReturn && !isShuttle && roundTripMode === 'continuous' ? '#7c3aed' : '#2563eb' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -2312,62 +2287,89 @@ export function BookingPanel({
                           if (onDropoffChange) onDropoffChange(loc);
                         }}
                       />
-                      {/* Arrival ETA at dropoff */}
-                      {dropoffLoc && (() => {
-                        const legInfo = getLegEtaInfo(stops.length);
-                        if (!legInfo) return null;
-                        return (
-                          <div style={{ paddingBottom: '4px', marginTop: '-2px', animation: 'fadeIn 0.2s ease' }}>
-                            <span className={`loc-leg-badge${legInfo.eta ? ' has-eta' : ''}`} style={{ fontSize: '10px' }}>
-                              {legInfo.eta && <span style={{ opacity: 0.7, fontSize: '9px' }}>🏁</span>}
-                              {legInfo.eta ? `Arrive ${formatTimeStr(legInfo.eta.time)}` : '⏱ Enter time'} · {(legInfo.distance / 1000).toFixed(1)} km · {Math.round(legInfo.duration / 60)} min
-                            </span>
-                          </div>
-                        );
-                      })()}
                     </div>
+                    
+                    {/* Destination Wait Time Controls inline */}
+                    {(tripType !== 'one-way') && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '4px' }}>
+                        {(() => {
+                          const isHr = dropoffWaitUnit === 'hr';
+                          const displayVal = isHr ? parseFloat((dropoffWaitMin / 60).toFixed(2)) : dropoffWaitMin;
+                          const step = isHr ? 0.5 : 5;
+                          const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
+
+                          const handleWaitChange = (newMin: number) => {
+                            const validNewMin = Math.max(0, newMin);
+                            const deltaMin = validNewMin - dropoffWaitMin;
+                            setDropoffWaitMin(validNewMin);
+
+                            if (tripType === 'roundtrip' && endDate && endTime) {
+                              const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
+                              setEndDate(shifted.date);
+                              setEndTime(shifted.time);
+                            }
+                          };
+
+                          return (
+                            <>
+                              <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                              <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ddd6fe', fontSize: '12px', fontWeight: 800, outline: 'none', boxSizing: 'border-box' }} />
+                              <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd6fe', height: '24px' }}>
+                                <button onClick={() => setDropoffWaitUnit('min')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#7c3aed' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
+                                <button onClick={() => setDropoffWaitUnit('hr')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #ddd6fe', cursor: 'pointer', background: isHr ? '#7c3aed' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
+                              </div>
+                              <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Destination Wait Time (Shuttle & Round Trip) */}
-                  {(isShuttle || tripType === 'roundtrip') && dropoffLoc && (
-                    <div style={{ margin: '-2px 14px 8px', padding: '8px 10px', borderRadius: '10px', background: '#faf5ff', border: '1px solid #ede9fe', animation: 'slideDown 0.2s ease' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '11px', color: '#6d28d9', fontWeight: 700 }}>Stop duration</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          {(() => {
-                            const isHr = dropoffWaitUnit === 'hr';
-                            const displayVal = isHr ? parseFloat((dropoffWaitMin / 60).toFixed(2)) : dropoffWaitMin;
-                            const step = isHr ? 0.5 : 5;
-                            const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
-
-                            const handleWaitChange = (newMin: number) => {
-                              const validNewMin = Math.max(0, newMin);
-                              const deltaMin = validNewMin - dropoffWaitMin;
-                              setDropoffWaitMin(validNewMin);
-
-                              if (tripType === 'roundtrip' && endDate && endTime) {
-                                const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                setEndDate(shifted.date);
-                                setEndTime(shifted.time);
-                              }
-                            };
-
-                            return (
-                              <>
-                                <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                <input type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: `${Math.max(54, String(displayVal).length * 8 + 32)}px`, transition: 'width 0.2s ease', height: '24px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ddd6fe', fontSize: '12px', fontWeight: 800, outline: 'none', boxSizing: 'border-box' }} />
-                                <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #ddd6fe', height: '24px' }}>
-                                  <button onClick={() => setDropoffWaitUnit('min')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', cursor: 'pointer', background: !isHr ? '#7c3aed' : 'white', color: !isHr ? 'white' : '#94a3b8' }}>min</button>
-                                  <button onClick={() => setDropoffWaitUnit('hr')} style={{ padding: '0 5px', fontSize: '9px', fontWeight: 800, border: 'none', borderLeft: '1px solid #ddd6fe', cursor: 'pointer', background: isHr ? '#7c3aed' : 'white', color: isHr ? 'white' : '#94a3b8' }}>hr</button>
-                                </div>
-                                <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #ddd6fe', background: 'white', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                              </>
-                            );
-                          })()}
+                  {/* Dropoff Arrival / Depart Message */}
+                  {dropoffLoc && (() => {
+                    const legInfo = getLegEtaInfo(stops.length);
+                    if (!legInfo) return null;
+                    const hasWait = tripType !== 'one-way' && dropoffWaitMin > 0;
+                    return (
+                      <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {hasWait && (
+                            <>
+                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700 }}>Wait time:</span>
+                              <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                                {legInfo.eta ? (() => {
+                                  const [h, m] = legInfo.eta.time.split(':').map(Number);
+                                  const totalMin = h * 60 + m + dropoffWaitMin;
+                                  return `Depart at ${formatTimeStr(`${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`)}`;
+                                })() : 'Depart time...'}
+                              </span>
+                            </>
+                          )}
+                          {legInfo.eta && (
+                            <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: hasWait ? 'auto' : 0, fontWeight: 600 }}>
+                              {hasWait ? '' : '🏁 '}Arrive {formatTimeStr(legInfo.eta.time)} · {(legInfo.distance / 1000).toFixed(1)} km
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
+
+                  {/* ── ADD STOP BUTTON ── */}
+                  <div className="loc-row-sep" />
+                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' }}>
+                    <button onClick={() => addStop()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 14px', borderRadius: '20px', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
+                      <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Add a stop
+                    </button>
+                    {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
+                        {(routeDistance / 1000).toFixed(1)} km total · {formatDuration(routeDuration)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* ── RETURN (Continuous Round Trip) ── */}
                   {showReturn && !isShuttle && roundTripMode === 'continuous' && (
