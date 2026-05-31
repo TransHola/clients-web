@@ -2222,7 +2222,7 @@ export function BookingPanel({
                         <LocationSearchInput
                           key={`pickup-${activeDayIdx}`}
                           hasError={missingFields.includes('pickup')}
-                          placeholder="Pickup location"
+                          placeholder="Start Location"
                           value={pickupValue}
                           showLocateMe
                           onLocateMe={() => detectLocation(true)}
@@ -2453,7 +2453,7 @@ export function BookingPanel({
                       <LocationSearchInput
                         key={`dropoff-${activeDayIdx}`}
                         hasError={missingFields.includes('dropoff')}
-                        placeholder={showReturn && !isShuttle && roundTripMode === 'continuous' ? `Destination / Stop ${stops.length + 1}` : 'Dropoff / Final destination'}
+                        placeholder={showReturn && !isShuttle && roundTripMode === 'continuous' ? `Destination / Stop ${stops.length + 1}` : 'End Location'}
                         value={dropoffValue}
                         bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
                         onSelect={(loc) => {
@@ -2648,7 +2648,7 @@ export function BookingPanel({
                         </div>
                         <div className="loc-input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
                           <span onClick={() => addStop()} style={{ color: '#6d28d9', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: '4px' }}>
-                            Add a stop
+                            Destination Stop
                           </span>
                           {routeDistance && routeDuration && pickupLoc && dropoffLoc && !(showReturn && !isShuttle && roundTripMode === 'continuous') && (
                             <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>

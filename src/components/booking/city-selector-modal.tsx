@@ -11,6 +11,7 @@ export interface GeoContext {
   countryCode?: string
   lat: number
   lon: number
+  distanceUnit?: 'km' | 'mi'
 }
 
 interface CitySelectorModalProps {

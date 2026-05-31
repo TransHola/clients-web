@@ -242,11 +242,13 @@ function DraggableStopMarker({
 function MapController({
   pickup,
   dropoff,
+  returnLoc,
   stops,
   userLocation,
 }: {
   pickup?: PinLocation | null
   dropoff?: PinLocation | null
+  returnLoc?: PinLocation | null
   stops?: StopLocation[]
   userLocation?: { lat: number; lon: number } | null
 }) {
@@ -268,6 +270,7 @@ function MapController({
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
     if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
+    if (isValidCoord(returnLoc?.coordinate)) addIfValid(returnLoc!.coordinate)
 
     const doCenter = (animate = true) => {
       try {
@@ -312,6 +315,7 @@ function MapController({
 function RoutingMachine({
   pickup,
   dropoff,
+  returnLoc,
   stops,
   tripType,
   onHistoryChange,
@@ -320,6 +324,7 @@ function RoutingMachine({
 }: {
   pickup: PinLocation
   dropoff: PinLocation
+  returnLoc?: PinLocation
   stops?: StopLocation[]
   tripType?: string
   onHistoryChange?: (histLen: number, reinstatePrev: () => void, reinstateInitial: () => void) => void
@@ -368,11 +373,13 @@ function RoutingMachine({
 
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     
-    if (tripType === 'roundtrip' || tripType === 'shuttle') {
+    if (tripType === 'roundtrip' || tripType === 'shuttle' || tripType === 'multi-day') {
       // In a round trip, dropoff is the main destination, stops are on the way back (or rather, after the dropoff)
       if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
       stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
-      if (isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
+      if (isValidCoord(returnLoc?.coordinate)) {
+        addIfValid(returnLoc!.coordinate)
+      } else if (isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
         addIfValid(pickup!.coordinate)
       }
     } else {
@@ -382,7 +389,7 @@ function RoutingMachine({
     }
 
     return wps
-  }, [pickup, dropoff, stops, tripType])
+  }, [pickup, dropoff, returnLoc, stops, tripType])
 
   // Apply a specific set of waypoints (for reinstate)
   const applyWaypoints = React.useCallback((wps: L.LatLng[], label: string) => {
@@ -428,7 +435,7 @@ function RoutingMachine({
       },
       routeLine: function (route: any, options: any) {
         const type = tripTypeRef.current;
-        if ((type === 'shuttle' || type === 'roundtrip') && route.waypointIndices && route.waypointIndices.length >= 2) {
+        if ((type === 'shuttle' || type === 'roundtrip' || type === 'multi-day') && route.waypointIndices && route.waypointIndices.length >= 2) {
           const splitIdx = route.waypointIndices[route.waypointIndices.length - 2];
           const forwardCoords = route.coordinates.slice(0, splitIdx + 1);
           const returnCoords = route.coordinates.slice(splitIdx);
@@ -487,7 +494,7 @@ function RoutingMachine({
         let oneWayTime = 0;
         let oneWayDistance = 0;
         const type = tripTypeRef.current;
-        if ((type === 'shuttle' || type === 'roundtrip') && route.waypointIndices && route.waypointIndices.length >= 2) {
+        if ((type === 'shuttle' || type === 'roundtrip' || type === 'multi-day') && route.waypointIndices && route.waypointIndices.length >= 2) {
           const splitIdx = route.waypointIndices[route.waypointIndices.length - 2];
           if (route.instructions) {
             for (const inst of route.instructions) {
@@ -519,7 +526,16 @@ function RoutingMachine({
 
   // 2. Update waypoints (and history) when pickup/dropoff/stops change
   React.useEffect(() => {
-    if (!controlRef.current || !pickup?.coordinate || !dropoff?.coordinate) return
+    if (!controlRef.current) return
+
+    if (!pickup?.coordinate || !dropoff?.coordinate) {
+      const currentWps = controlRef.current.getWaypoints().map((wp: any) => wp.latLng).filter(Boolean)
+      if (currentWps.length > 0) {
+        controlRef.current.setWaypoints([])
+        if (onRouteFound) onRouteFound(0, 0, undefined, undefined)
+      }
+      return
+    }
 
     const waypoints = buildWaypoints()
     const currentWps = controlRef.current.getWaypoints().map((wp: any) => wp.latLng).filter(Boolean)
@@ -536,6 +552,10 @@ function RoutingMachine({
         historyRef.current.push({ label: `Adjustment ${historyRef.current.length + 1}`, waypoints: [...currentWps] })
         onHistoryChange?.(historyRef.current.length, reinstateHandlers.prev, reinstateHandlers.initial)
       }
+      
+      // Clear route metrics immediately while the new route is fetching
+      if (onRouteFound) onRouteFound(0, 0, undefined, undefined)
+      
       controlRef.current.setWaypoints(waypoints)
     }
 
@@ -548,6 +568,7 @@ function RoutingMachine({
 export function LiveMap({
   pickup,
   dropoff,
+  returnLoc,
   stops,
   tripType,
   shuttleVehicles = 1,
@@ -559,9 +580,11 @@ export function LiveMap({
   pinsLocked,
   isStaticPreview = false,
   countryCode,
+  distanceUnit = 'km',
 }: {
   pickup?: any
   dropoff?: any
+  returnLoc?: any
   stops?: StopLocation[]
   tripType?: string
   shuttleVehicles?: number
@@ -573,15 +596,14 @@ export function LiveMap({
   pinsLocked?: boolean
   isStaticPreview?: boolean
   countryCode?: string
+  distanceUnit?: string
 }) {
   const defaultCenter: [number, number] = userLocation
     ? [Number(userLocation.lat) || 20, Number(userLocation.lon) || 0]
     : [20, 0]
 
   const formatDistance = (distanceMeters: number) => {
-    const cCode = (countryCode || pickup?.countryCode || 'US').toUpperCase();
-    const isMiles = cCode === 'US' || cCode === 'GB' || cCode === 'LR' || cCode === 'MM';
-    if (isMiles) {
+    if (distanceUnit === 'mi') {
       return `${(distanceMeters * 0.000621371).toFixed(1)} mi`;
     }
     return `${(distanceMeters / 1000).toFixed(1)} km`;
@@ -708,7 +730,6 @@ export function LiveMap({
             stroke-dashoffset: var(--path-length);
             animation: snakeReturnAnim 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
             stroke-linecap: round;
-            opacity: 0;
         }
         @keyframes snakeForwardAnim {
             0% { stroke-dashoffset: var(--path-length); opacity: 1; }
@@ -738,7 +759,7 @@ export function LiveMap({
         />
 
         {/* Auto-zoom */}
-        <MapController pickup={pickup} dropoff={dropoff} stops={stops} userLocation={userLocation} />
+        <MapController pickup={pickup} dropoff={dropoff} returnLoc={returnLoc} stops={stops} userLocation={userLocation} />
 
         {/* Start pin */}
         {isValidCoord(pickup?.coordinate) && (
@@ -793,6 +814,7 @@ export function LiveMap({
           <RoutingMachine
             pickup={pickup}
             dropoff={dropoff}
+            returnLoc={returnLoc}
             stops={stops}
             tripType={tripType}
             onHistoryChange={handleHistoryChange}

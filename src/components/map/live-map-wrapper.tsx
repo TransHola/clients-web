@@ -8,6 +8,9 @@ export const LiveMapWrapper = dynamic(
 ) as React.FC<{
   pickup?: any
   dropoff?: any
+  returnLoc?: any
+  countryCode?: string
+  distanceUnit?: string
   stops?: StopLocation[]
   tripType?: string
   shuttleVehicles?: number

@@ -10,12 +10,15 @@ import type { PinLocation, StopLocation } from "@/components/map/live-map"
 export default function Home() {
   const [pickup, setPickup] = React.useState<any>(null)
   const [dropoff, setDropoff] = React.useState<any>(null)
+  const [returnLoc, setReturnLoc] = React.useState<any>(null)
   const [stops, setStops] = React.useState<StopLocation[]>([])
   const [userLocation, setUserLocation] = React.useState<{ lat: number; lon: number } | null>(null)
   const [bookingStep, setBookingStep] = React.useState<"search" | "quotation" | "timeline">("search")
   const [selectedQuote, setSelectedQuote] = React.useState<any | null>(null)
   const [tripType, setTripType] = React.useState<string>("oneway")
   const [shuttleVehicles, setShuttleVehicles] = React.useState<number>(1)
+  const [countryCode, setCountryCode] = React.useState<string>("AE")
+  const [distanceUnit, setDistanceUnit] = React.useState<string>("km")
 
   // Track the "pinned" (drag-adjusted) locations separately from the typed ones
   const [pickupPinned, setPickupPinned] = React.useState<PinLocation | null>(null)
@@ -122,6 +125,9 @@ export default function Home() {
               onQuoteSelected={setSelectedQuote}
               onTripTypeChange={setTripType}
               onShuttleVehiclesChange={setShuttleVehicles}
+              onReturnChange={setReturnLoc}
+              onCountryCodeChange={setCountryCode}
+              onDistanceUnitChange={setDistanceUnit}
             />
           </div>
         </div>
@@ -137,10 +143,13 @@ export default function Home() {
           <LiveMapWrapper
             pickup={pickup}
             dropoff={dropoff}
+            returnLoc={returnLoc}
             stops={stops}
             tripType={tripType}
             shuttleVehicles={shuttleVehicles}
             userLocation={userLocation}
+            countryCode={countryCode}
+            distanceUnit={distanceUnit}
             onPickupMoved={handlePickupMoved}
             onDropoffMoved={handleDropoffMoved}
             onStopMoved={handleStopMoved}
