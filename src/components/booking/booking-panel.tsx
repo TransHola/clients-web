@@ -1350,9 +1350,33 @@ export function BookingPanel({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {multiDayStore.map((day, idx) => (
                     <div key={idx} style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ margin: '0 0 12px', fontSize: '11px', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Day {idx + 1} • {day.dateStr ? format(parseISO(day.dateStr), 'MMM d, yyyy') : 'TBD'}
-                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px' }}>
+                        <p style={{ margin: '0', fontSize: '11px', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Day {idx + 1} • {day.dateStr ? format(parseISO(day.dateStr), 'MMM d, yyyy') : 'TBD'}
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          {day.routeDistance && (
+                            <span style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
+                              <Navigation style={{ width: '12px', height: '12px', color: '#ec4899' }} />
+                              {(() => {
+                                const isMiles = clientGeoContext.distanceUnit === 'mi';
+                                const dist = Math.round(isMiles ? day.routeDistance * 0.000621371 : day.routeDistance / 1000);
+                                return `${dist} ${isMiles ? 'mi' : 'km'}`;
+                              })()}
+                            </span>
+                          )}
+                          {day.routeDuration && (
+                            <span style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}>
+                              <Clock style={{ width: '12px', height: '12px', color: '#f59e0b' }} />
+                              {(() => {
+                                const hrs = Math.floor(day.routeDuration / 3600);
+                                const mins = Math.floor((day.routeDuration % 3600) / 60);
+                                return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                              })()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
                         <div style={{ display: 'flex', gap: '12px', position: 'relative', paddingBottom: '16px' }}>
                           <div style={{ width: '2px', position: 'absolute', left: '4px', top: '16px', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
