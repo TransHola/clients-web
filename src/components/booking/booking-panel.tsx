@@ -2416,18 +2416,21 @@ export function BookingPanel({
 
                       {/* ── ADD STOP BUTTON ── */}
                       <div className="loc-row-sep" />
-                      <div className="loc-row" style={{ alignItems: 'center', background: '#fafafa', paddingTop: '8px', paddingBottom: '8px' }}>
-                        <div style={{ width: '10px', height: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <button onClick={() => addStop()} style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
-                            <Plus size={14} strokeWidth={3} />
-                          </button>
-                        </div>
-                        <div className="loc-input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
-                          <span onClick={() => addStop()} style={{ color: '#6d28d9', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: '4px' }}>
-                            Destination Stop
-                          </span>
+                      {(() => {
+                        const canAddStop = stops.length === 0 || stops[stops.length - 1].loc !== null;
+                        return (
+                          <div className="loc-row" style={{ alignItems: 'center', background: '#fafafa', paddingTop: '8px', paddingBottom: '8px', opacity: canAddStop ? 1 : 0.5, transition: 'opacity 0.2s' }}>
+                            <div style={{ width: '10px', height: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <button disabled={!canAddStop} onClick={() => addStop()} style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canAddStop ? 'pointer' : 'not-allowed', flexShrink: 0, padding: 0 }}
+                                onMouseEnter={e => { if (canAddStop) (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
+                                onMouseLeave={e => { if (canAddStop) (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
+                                <Plus size={14} strokeWidth={3} />
+                              </button>
+                            </div>
+                            <div className="loc-input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
+                              <span onClick={() => canAddStop && addStop()} style={{ color: '#6d28d9', fontSize: '13px', fontWeight: 700, cursor: canAddStop ? 'pointer' : 'not-allowed', padding: '4px' }}>
+                                Destination Stop
+                              </span>
                           {routeDistance && routeDuration && pickupLoc && dropoffLoc && !(showReturn && !isShuttle && roundTripMode === 'continuous') && (
                             <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
                               {formatDistance(routeDistance, clientGeoContext.distanceUnit)} total · {formatDuration(routeDuration)}
@@ -2435,7 +2438,8 @@ export function BookingPanel({
                           )}
                         </div>
                       </div>
-
+                      );
+                    })()}
 
                     </React.Fragment>
                   {/* ── DROPOFF ROW ── */}
