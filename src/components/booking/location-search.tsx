@@ -248,16 +248,46 @@ export function LocationSearchInput({
 
       {/* Dropdown (Portal to appear between form and map) */}
       {isOpen && hasResults && rect && mounted.current && createPortal(
-        <div ref={portalRef} style={{
-          position: 'fixed', 
-          top: rect.top - 8, 
-          left: rect.right + 24,
-          width: '480px',
-          background: 'white', border: '1.5px solid #e2e8f0',
-          borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-          zIndex: 1000, maxHeight: '400px', overflowY: 'auto', padding: '10px',
-          animation: 'fadeIn 0.2s ease'
-        }}>
+        (() => {
+          const POPUP_WIDTH = 480;
+          const MAX_HEIGHT = 400;
+          const SPACING = 8;
+          let top = rect.top - SPACING;
+          let left = rect.right + 24;
+          let width = POPUP_WIDTH;
+
+          // If there's not enough room on the right, position it below the input
+          if (left + POPUP_WIDTH > window.innerWidth - 16) {
+            left = rect.left;
+            top = rect.bottom + SPACING;
+            width = Math.max(rect.width, Math.min(POPUP_WIDTH, window.innerWidth - 32));
+
+            // If it overflows the bottom edge, check if there's more room above
+            if (top + MAX_HEIGHT > window.innerHeight - 16) {
+               const spaceAbove = rect.top;
+               const spaceBelow = window.innerHeight - rect.bottom;
+               if (spaceAbove > spaceBelow) {
+                  top = rect.top - MAX_HEIGHT - SPACING;
+               }
+            }
+          } else {
+            // It's on the right. If it overflows the bottom, shift it up
+            if (top + MAX_HEIGHT > window.innerHeight - 16) {
+              top = Math.max(16, window.innerHeight - MAX_HEIGHT - 16);
+            }
+          }
+
+          return (
+            <div ref={portalRef} style={{
+              position: 'fixed', 
+              top, 
+              left,
+              width,
+              background: 'white', border: '1.5px solid #e2e8f0',
+              borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+              zIndex: 1000, maxHeight: `${MAX_HEIGHT}px`, overflowY: 'auto', padding: '10px',
+              animation: 'fadeIn 0.2s ease'
+            }}>
           {/* GIS live results first */}
           {gisResults.length > 0 && (
             <>
@@ -302,9 +332,11 @@ export function LocationSearchInput({
               No locations found
             </div>
           )}
-        </div>,
-        document.body
-      )}
+        </div>
+        );
+      })(),
+      document.body
+    )}
     </div>
   )
 }
