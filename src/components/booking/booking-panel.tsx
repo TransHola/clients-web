@@ -2325,8 +2325,7 @@ export function BookingPanel({
                   )} */}
 
 
-                  {!(showReturn && !isShuttle && roundTripMode === 'continuous') && (
-                    <React.Fragment>
+                  <React.Fragment>
                       {/* ── INTERMEDIATE STOPS ── */}
                       {stops.map((stop, idx) => {
                         const legInfo = getLegEtaInfo(idx);
@@ -2427,9 +2426,9 @@ export function BookingPanel({
                         </div>
                         <div className="loc-input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
                           <span onClick={() => addStop()} style={{ color: '#6d28d9', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: '4px' }}>
-                            Add a stop
+                            Destination Stop
                           </span>
-                          {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
+                          {routeDistance && routeDuration && pickupLoc && dropoffLoc && !(showReturn && !isShuttle && roundTripMode === 'continuous') && (
                             <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
                               {formatDistance(routeDistance, clientGeoContext.distanceUnit)} total · {formatDuration(routeDuration)}
                             </span>
@@ -2439,7 +2438,6 @@ export function BookingPanel({
 
 
                     </React.Fragment>
-                  )}
                   {/* ── DROPOFF ROW ── */}
                   <div className="loc-row-sep" />
                   <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined, alignItems: 'center' }}>
@@ -2538,124 +2536,6 @@ export function BookingPanel({
 
 
 
-                  {(showReturn && !isShuttle && roundTripMode === 'continuous') && (
-                    <React.Fragment>
-                      {/* ── INTERMEDIATE STOPS ── */}
-                      {stops.map((stop, idx) => {
-                        const legInfo = getLegEtaInfo(idx);
-                        return (
-                          <div key={stop.id} style={{ animation: 'slideDown 0.2s ease' }}>
-                            <div className="loc-row-sep" />
-                            <div className="loc-row" style={{ paddingTop: '4px', paddingBottom: '4px' }}>
-                              <div className="loc-dot-stop">
-                                <span style={{ fontSize: '7px', color: 'white', fontWeight: 900 }}>{idx + 1}</span>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <LocationSearchInput
-                                  placeholder={`Stop ${idx + 1}`}
-                                  value={stop.address}
-                                  bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
-                                  onSelect={(loc) => { updateStop(stop.id, { address: loc.address, loc }); saveRecentLocation(loc); }}
-                                />
-                              </div>
-                              {/* Wait Time Controls inline */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '4px' }}>
-                                {(() => {
-                                  const unit = stopDurationUnit[stop.id] || 'min';
-                                  const isHr = unit === 'hr';
-                                  const displayVal = isHr ? parseFloat((stop.stopDurationMin / 60).toFixed(2)) : stop.stopDurationMin;
-                                  const step = isHr ? 0.5 : 1;
-                                  const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
-
-                                  const handleWaitChange = (newMin: number) => {
-                                    const validNewMin = Math.max(0, newMin);
-                                    const deltaMin = validNewMin - stop.stopDurationMin;
-                                    updateStop(stop.id, { stopDurationMin: validNewMin });
-
-                                    if (tripType === 'roundtrip' && endDate && endTime) {
-                                      const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                      setEndDate(shifted.date);
-                                      setEndTime(shifted.time);
-                                    }
-                                  };
-
-                                  return (
-                                    <div style={{
-                                      height: '28px', padding: '0 4px 0 8px', borderRadius: '8px',
-                                      border: '1px solid #ddd6fe', background: 'white', boxSizing: 'border-box',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '130px'
-                                    }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                                        <input className="no-spinner" type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: '46px', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 800, color: '#0f172a', background: 'transparent', textAlign: 'center' }} />
-                                        <Tooltip>
-                                          <TooltipTrigger onClick={() => setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: isHr ? 'min' : 'hr' }))} style={{ padding: '0 4px', fontSize: '10px', fontWeight: 800, border: 'none', cursor: 'pointer', background: 'transparent', color: '#7c3aed', display: 'flex', alignItems: 'center', height: '100%' }}>
-                                            {isHr ? 'hr' : 'min'}
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>Switch to hour or minute</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                        <button onClick={() => handleWaitChange(toMin(displayVal - step))} style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#ede9fe', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5b21b6', fontSize: '14px', lineHeight: 1, fontWeight: 500 }}>−</button>
-                                        <button onClick={() => handleWaitChange(toMin(displayVal + step))} style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#ede9fe', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5b21b6', fontSize: '14px', lineHeight: 1, fontWeight: 500 }}>+</button>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-
-                              <button onClick={() => removeStop(stop.id)} title="Remove stop" style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1.5px solid #fecaca', background: '#fff5f5', cursor: 'pointer', color: '#ef4444', fontSize: '15px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                            </div>
-
-                            {/* Stop leg info */}
-                            {stop.loc && legInfo && (
-                              <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
-                                    {legInfo.eta ? (() => {
-                                      const [h, m] = legInfo.eta.time.split(':').map(Number);
-                                      const totalMin = h * 60 + m + stop.stopDurationMin;
-                                      return `Depart at ${formatTimeStr(`${String(Math.floor(totalMin / 60) % 24).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`)}`;
-                                    })() : 'Depart time...'}
-                                  </span>
-                                  {legInfo.eta && (
-                                    <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
-                                      Arrive {formatTimeStr(legInfo.eta.time)} · {formatDistance(legInfo.distance, clientGeoContext.distanceUnit)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* ── ADD STOP BUTTON ── */}
-                      <div className="loc-row-sep" />
-                      <div className="loc-row" style={{ alignItems: 'center', background: '#fafafa', paddingTop: '8px', paddingBottom: '8px' }}>
-                        <div style={{ width: '10px', height: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <button onClick={() => addStop()} style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1.5px dashed #7c3aed', background: '#f5f3ff', color: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ede9fe'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}>
-                            <Plus size={14} strokeWidth={3} />
-                          </button>
-                        </div>
-                        <div className="loc-input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
-                          <span onClick={() => addStop()} style={{ color: '#6d28d9', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: '4px' }}>
-                            Destination Stop
-                          </span>
-                          {routeDistance && routeDuration && pickupLoc && dropoffLoc && !(showReturn && !isShuttle && roundTripMode === 'continuous') && (
-                            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: 'auto' }}>
-                              {formatDistance(routeDistance, clientGeoContext.distanceUnit)} total · {formatDuration(routeDuration)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-
-                    </React.Fragment>
-                  )}
                   {/* ── DROPOFF ENDS HERE ── */}
                 </div>
 
