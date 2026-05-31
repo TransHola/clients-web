@@ -1393,7 +1393,7 @@ export function BookingPanel({
                       <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Start Location</p>
                       <p style={{ margin: '4px 0 0', fontSize: '15px', fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{pickupValue || 'Not specified'}</p>
                       {(() => {
-                        const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                        const activeDate = startDate;
                         const t = startTime || '00:00';
                         const arr = formatTimeStr(t);
                         const depObj = activeDate ? addSecondsToDatetime(activeDate, t, pickupWaitMin * 60) : { time: t, date: activeDate };
@@ -1450,7 +1450,7 @@ export function BookingPanel({
                         {(() => {
                           const legInfo = getLegEtaInfo(i);
                           if (!legInfo || !legInfo.eta) return null;
-                          const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                          const activeDate = startDate;
                           let dayOffsetArr = null;
                           if (legInfo.eta.date && activeDate && legInfo.eta.date !== activeDate) {
                             const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
@@ -1508,7 +1508,7 @@ export function BookingPanel({
                       {(() => {
                         const legInfo = getLegEtaInfo(stops.length);
                         if (!legInfo || !legInfo.eta) return null;
-                        const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                        const activeDate = startDate;
                         let dayOffsetArr = null;
                         if (legInfo.eta.date && activeDate && legInfo.eta.date !== activeDate) {
                           const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
