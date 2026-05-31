@@ -103,7 +103,7 @@ function getDayDifferenceStr(startDateStr: string, endDateStr: string): string {
   }
 }
 
-function TimePickerSelect({ value, onChange, style, disabled, minTime }: { value: string, onChange: (val: string) => void, style?: React.CSSProperties, disabled?: boolean, minTime?: string }) {
+function TimePickerSelect({ value, onChange, style, disabled, minTime, prefix }: { value: string, onChange: (val: string) => void, style?: React.CSSProperties, disabled?: boolean, minTime?: string, prefix?: string }) {
   const options = React.useMemo(() => {
     const times = []
     for (let h = 0; h < 24; h++) {
@@ -126,7 +126,8 @@ function TimePickerSelect({ value, onChange, style, disabled, minTime }: { value
       <SelectTrigger style={style}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <Clock style={{ width: '16px', height: '16px', marginRight: '8px', color: value ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {prefix && <span style={{ color: '#94a3b8', fontSize: '12px' }}>{prefix}</span>}
             {value ? formatTimeStr(value) : <SelectValue placeholder="Select time…" />}
           </span>
         </div>
@@ -465,6 +466,7 @@ export function BookingPanel({
   const [pickupArrivalTime, setPickupArrivalTime] = React.useState("")
   const [endDate, setEndDate] = React.useState("")
   const [endTime, setEndTime] = React.useState("")
+  const [syncEndTime, setSyncEndTime] = React.useState(true)
 
   // ATA engine state
   const [routeDuration, setRouteDuration] = React.useState<number | null>(null) // seconds
@@ -519,6 +521,14 @@ export function BookingPanel({
       onTripTypeChange(tripType === 'one-way' ? 'oneway' : tripType);
     }
   }, [tripType, onTripTypeChange]);
+
+  React.useEffect(() => {
+    if (tripType === 'roundtrip' && pickupLoc && !dropoffLoc) {
+      setDropoffValue(pickupLoc.address);
+      setDropoffLoc(pickupLoc);
+      if (onDropoffChange) onDropoffChange(pickupLoc);
+    }
+  }, [tripType, pickupLoc, dropoffLoc, onDropoffChange]);
 
   React.useEffect(() => {
     if (onShuttleVehiclesChange) {
@@ -1281,7 +1291,17 @@ export function BookingPanel({
                   <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
                     <Users style={{ width: '14px', height: '14px', color: '#8b5cf6' }} /> {passengers} Pax
                   </span>
-                  {(tripType === 'shuttle' || tripType === 'multi-day' || shuttleVehicles > 1) && (
+                  {routeDuration !== null && (
+                    <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                      <Clock style={{ width: '14px', height: '14px', color: '#f59e0b' }} /> {formatDuration(routeDuration)}
+                    </span>
+                  )}
+                  {routeDistance !== null && (
+                    <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                      <Navigation style={{ width: '14px', height: '14px', color: '#ec4899' }} /> {formatDistance(routeDistance, clientGeoContext.distanceUnit)}
+                    </span>
+                  )}
+                  {tripType === 'shuttle' && (
                     <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
                       <Car style={{ width: '14px', height: '14px', color: '#10b981' }} /> {shuttleVehicles} Van{shuttleVehicles > 1 ? 's' : ''}
                     </span>
@@ -1338,6 +1358,23 @@ export function BookingPanel({
                             )}
                           </div>
                         </div>
+
+                        {/* Stops for this day */}
+                        {day.stops && day.stops.map((stop, sIdx) => (
+                          <div key={sIdx} style={{ display: 'flex', gap: '12px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
+                            <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white', border: '2px solid #8b5cf6', flexShrink: 0, marginTop: '6px', marginLeft: '-1px', zIndex: 1 }} />
+                            <div>
+                              <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Stop {sIdx + 1}</p>
+                              <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{stop.address}</p>
+                              {stop.stopDurationMin > 0 && (
+                                <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Timer style={{ width: '10px', height: '10px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin}m
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
 
                         {/* Distance & Duration for this day */}
                         {(day.routeDistance || day.routeDuration) && (
@@ -1978,6 +2015,7 @@ export function BookingPanel({
                           const minTimeBound = (startDate === today && today !== '') ? currentLocalTime : undefined;
                           return (
                             <TimePickerSelect
+                              prefix="Start"
                               value={startTime}
                               onChange={(val) => {
                                 setStartTime(val);
@@ -2160,23 +2198,13 @@ export function BookingPanel({
                 <div style={{ padding: '16px', paddingBottom: '24px', background: '#f8fafc', borderRadius: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', animation: 'fadeIn 0.2s ease' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
                     <div style={{ animation: 'fadeIn 0.2s ease' }}>
-                      <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                        <span>{showReturn && !isShuttle && roundTripMode === 'transfer' ? `Transfer ${activeDayIdx + 1} Date & Time` : `Day ${activeDayIdx + 1} Date & Time`}</span>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span>Date & Time</span>
+                        <span style={{ color: '#0f172a', fontWeight: 800 }}>
+                          {showReturn && !isShuttle && roundTripMode === 'transfer' ? `Transfer ${activeDayIdx + 1}` : `Day ${activeDayIdx + 1}`} &nbsp;&middot;&nbsp; {multiDayStore[activeDayIdx]?.dateStr ? format(parseISO(multiDayStore[activeDayIdx].dateStr), 'MMM d, yyyy') : 'Pick Date Above'}
+                        </span>
                       </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-
-                        <div style={{
-                          width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px',
-                          border: '1px solid #e2e8f0', fontSize: '13px',
-                          fontWeight: 600, background: '#f8fafc', boxSizing: 'border-box', color: '#475569',
-                          display: 'flex', alignItems: 'center', justifyContent: 'flex-start'
-                        }}
-                        >
-                          <CalendarDays style={{ width: '14px', height: '14px', marginRight: '6px', color: '#64748b', flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {multiDayStore[activeDayIdx]?.dateStr ? format(parseISO(multiDayStore[activeDayIdx].dateStr), 'MMM d, yyyy') : 'Pick Date Above'}
-                          </span>
-                        </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: ((showReturn && !isShuttle && roundTripMode === 'continuous') || tripType === 'shuttle' || tripType === 'multi-day') ? '1fr 1fr' : '1fr', gap: '8px' }}>
 
                         {(() => {
                           const activeDate = multiDayStore[activeDayIdx]?.dateStr || startDate;
@@ -2185,13 +2213,32 @@ export function BookingPanel({
                           const minTimeBound = (activeDate === today && today !== '') ? currentLocalTime : undefined;
                           return (
                             <TimePickerSelect
+                              prefix="Start"
                               value={startTime}
                               onChange={(val) => setStartTime(val)}
                               minTime={minTimeBound}
-                              style={{ width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('start time') ? '1.5px solid #ef4444' : `1.5px solid ${startTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }}
+                              style={{ width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('start time') ? '1.5px solid #ef4444' : `1.5px solid ${startTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: 'white', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }}
                             />
                           );
                         })()}
+
+                        {((showReturn && !isShuttle && roundTripMode === 'continuous') || tripType === 'shuttle' || tripType === 'multi-day') && (
+                          <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                            <TimePickerSelect
+                              prefix="End"
+                              value={endTime}
+                              onChange={(val) => handleEndChange(endDate || startDate, val)}
+                              minTime={startTime}
+                              style={{ width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('return time') && !missingFields.includes('finish time') ? '1.5px solid #ef4444' : missingFields.includes('finish time') ? '1.5px solid #ef4444' : `1.5px solid ${ataAutoFixed ? '#f97316' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: 'white', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }}
+                            />
+                            {((tripType === 'roundtrip' && roundTripMode === 'continuous') || tripType === 'multi-day') && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'absolute', bottom: '-22px', right: '4px', cursor: 'pointer', animation: 'fadeIn 0.2s ease' }}>
+                                <input type="checkbox" checked={syncEndTime} onChange={(e) => setSyncEndTime(e.target.checked)} style={{ width: '11px', height: '11px', cursor: 'pointer', accentColor: '#2563eb' }} />
+                                <span style={{ fontSize: '10px', fontWeight: 600, color: '#64748b' }}>Sync with Route Activity timing</span>
+                              </label>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2271,9 +2318,10 @@ export function BookingPanel({
                               const deltaMin = validNewMin - pickupWaitMin;
                               setPickupWaitMin(validNewMin);
 
-                              if (tripType === 'roundtrip' && endDate && endTime) {
-                                const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                setEndDate(shifted.date);
+                              const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
+                              if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
+                                const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
+                                if (tripType !== 'multi-day') setEndDate(shifted.date);
                                 setEndTime(shifted.time);
                               }
                             };
@@ -2324,9 +2372,14 @@ export function BookingPanel({
                                 else if (diffDays > 1) daySuffix = ` (+${diffDays} days)`;
                               }
                               return (
-                                <span style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
-                                  Depart at {formatTimeStr(result.time)}{daySuffix}
-                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
+                                    Arrive {formatTimeStr(activeTimeStr)}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                                    Depart at {formatTimeStr(result.time)}{daySuffix}
+                                  </span>
+                                </div>
                               );
                             }
                             return null;
@@ -2377,9 +2430,10 @@ export function BookingPanel({
                                     const deltaMin = validNewMin - stop.stopDurationMin;
                                     updateStop(stop.id, { stopDurationMin: validNewMin });
 
-                                    if (tripType === 'roundtrip' && endDate && endTime) {
-                                      const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                                      setEndDate(shifted.date);
+                                    const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
+                                    if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
+                                      const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
+                                      if (tripType !== 'multi-day') setEndDate(shifted.date);
                                       setEndTime(shifted.time);
                                     }
                                   };
@@ -2495,9 +2549,10 @@ export function BookingPanel({
                             const deltaMin = validNewMin - dropoffWaitMin;
                             setDropoffWaitMin(validNewMin);
 
-                            if (tripType === 'roundtrip' && endDate && endTime) {
-                              const shifted = addSecondsToDatetime(endDate, endTime, deltaMin * 60);
-                              setEndDate(shifted.date);
+                            const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
+                            if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
+                              const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
+                              if (tripType !== 'multi-day') setEndDate(shifted.date);
                               setEndTime(shifted.time);
                             }
                           };
@@ -2540,15 +2595,13 @@ export function BookingPanel({
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                           {legInfo.eta && (
                             <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              {!hasWait && <Flag size={12} color="#16a34a" />} Arrive {formatEtaStr(legInfo.eta)} · {formatDistance(legInfo.distance, clientGeoContext.distanceUnit)}
+                              <Flag size={12} color="#16a34a" /> Arrive {formatEtaStr(legInfo.eta)}
                             </span>
                           )}
-                          {hasWait && (
-                            <>
-                              <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
-                                {legInfo.departEta ? <>Depart at {formatEtaStr(legInfo.departEta)}</> : 'Depart time...'}
-                              </span>
-                            </>
+                          {(endTime || legInfo.eta) && (
+                            <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                              Finish at {endTime ? formatEtaStr({ date: endDate || startDate, time: endTime }) : formatEtaStr(legInfo.eta)}
+                            </span>
                           )}
 
                         </div>
@@ -2619,7 +2672,7 @@ export function BookingPanel({
 
                       {/* ── ROUNDTRIP: ATA bar + editable return date/time ── */}
                       {tripType === 'roundtrip' && roundTripMode !== 'transfer' && (
-                        <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                        <div style={{ animation: 'fadeIn 0.2s ease', display: 'none' }}>
 
 
                           {/* Return fields summary / editor */}
@@ -2688,6 +2741,7 @@ export function BookingPanel({
                                       </Popover>
 
                                       <TimePickerSelect value={endTime}
+                                        prefix="End"
                                         onChange={(val) => handleEndChange(endDate, val)}
                                         minTime={endDate === minReturn.date ? minReturn.time : undefined}
                                         style={{ width: '100%', height: '100%', minHeight: '44px', padding: '0 12px', borderRadius: '10px', border: missingFields.includes('return time') ? '1.5px solid #ef4444' : `1px solid ${ataAutoFixed ? '#f97316' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 700, background: '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }}
@@ -2851,16 +2905,7 @@ export function BookingPanel({
                                   <>
                                     <div style={{ marginBottom: '10px', transition: 'all 0.3s ease' }}>
                                       <div style={{ animation: 'fadeIn 0.2s ease' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                          <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                            Shuttle Finish Time
-                                          </label>
-                                        </div>
-                                        <TimePickerSelect value={endTime}
-                                          onChange={(val) => handleEndChange(endDate, val)}
-                                          minTime={startTime}
-                                          style={{ width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('finish time') ? '1.5px solid #ef4444' : `1.5px solid ${ataAutoFixed ? '#f97316' : endTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }} />
-
+                                        {/* Shuttle Finish Time moved to top */}
                                         {maxLateReturnMins > 0 && (
                                           <div style={{ marginTop: '8px', padding: '8px 10px', background: '#fff7ed', borderRadius: '8px', border: '1px solid #ffedd5', animation: 'fadeIn 0.3s ease' }}>
                                             <p style={{ margin: 0, fontSize: '11px', color: '#9a3412', display: 'flex', alignItems: 'flex-start', gap: '6px', lineHeight: '1.4' }}>
@@ -3131,15 +3176,7 @@ export function BookingPanel({
                                 <>
                                   <div style={{ marginBottom: '10px', transition: 'all 0.3s ease' }}>
                                     <div style={{ animation: 'fadeIn 0.2s ease' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                        <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                          Shuttle Finish Time
-                                        </label>
-                                      </div>
-                                      <TimePickerSelect value={endTime}
-                                        onChange={(val) => handleEndChange(endDate, val)}
-                                        minTime={startTime}
-                                        style={{ width: '100%', height: '40px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('finish time') ? '1.5px solid #ef4444' : `1.5px solid ${ataAutoFixed ? '#f97316' : endTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: 'pointer' }} />
+                                      {/* Shuttle Finish Time moved to top */}
                                     </div>
                                   </div>
                                   {shuttleLoading && (

@@ -446,10 +446,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         <button onClick={() => { setSelected(null); if (onSelectionChange) onSelectionChange(null); onBack(); }} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
           <X style={{ width: '15px', height: '15px' }} />
         </button>
-        <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: '0 0 3px' }}>Choose your ride</h2>
-        <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, margin: 0 }}>
-          {tripType === 'shuttle' ? `${passengers} vehicle${passengers > 1 ? 's' : ''}` : `${passengers} passenger${passengers > 1 ? 's' : ''}`} · {routeDistanceKm} {bookingDetails?.distanceUnit === 'mi' ? 'mi' : 'km'} · {currency}
-        </p>
+        <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: 0 }}>Recommended Fleet</h2>
 
         {/* Shuttle route direction display */}
         {tripType === 'shuttle' && (

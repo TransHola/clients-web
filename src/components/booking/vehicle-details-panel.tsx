@@ -36,9 +36,16 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
             <tbody>
               {(option.vehicles || [{ type: option.label || option.title || 'Standard', count: 1, seats: option.totalSeats || option.seats || 4 }]).map((v: any, idx: number) => {
                 const days = Math.max(1, option.daysCount || 1);
-                const dailyRate = v.price !== undefined ? v.price / days : 0;
+                const avgDailyRate = v.price !== undefined ? v.price / days : 0;
                 
-                return Array.from({ length: days }).map((_, dayIdx) => (
+                return Array.from({ length: days }).map((_, dayIdx) => {
+                  const hasBreakdown = v.dailyBreakdown && v.dailyBreakdown.length > dayIdx;
+                  // If we have a breakdown, it is the total cost for that day for ALL vehicles of this type.
+                  // Divide it by v.count to get the PER-VEHICLE rate for that day.
+                  const dayTotalCost = hasBreakdown ? v.dailyBreakdown[dayIdx] : avgDailyRate * (v.count || 1);
+                  const dayRate = hasBreakdown ? dayTotalCost / (v.count || 1) : avgDailyRate;
+
+                  return (
                   <tr key={`${idx}-${dayIdx}`} style={{ borderBottom: dayIdx === days - 1 && idx === (option.vehicles?.length || 1) - 1 ? 'none' : '1px solid #f1f5f9' }}>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -53,13 +60,13 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#475569', textAlign: 'center' }}>{v.count}</td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>
-                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${dailyRate.toFixed(2)}` : '-'}
+                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${dayRate.toFixed(2)}` : '-'}
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>
-                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${(dailyRate * v.count).toFixed(2)}` : '-'}
+                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${dayTotalCost.toFixed(2)}` : '-'}
                     </td>
                   </tr>
-                ))
+                )})
               })}
             </tbody>
           </table>
