@@ -242,13 +242,11 @@ function DraggableStopMarker({
 function MapController({
   pickup,
   dropoff,
-  returnLoc,
   stops,
   userLocation,
 }: {
   pickup?: PinLocation | null
   dropoff?: PinLocation | null
-  returnLoc?: PinLocation | null
   stops?: StopLocation[]
   userLocation?: { lat: number; lon: number } | null
 }) {
@@ -270,7 +268,6 @@ function MapController({
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
     if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
-    if (isValidCoord(returnLoc?.coordinate)) addIfValid(returnLoc!.coordinate)
 
     const doCenter = (animate = true) => {
       try {
@@ -315,7 +312,6 @@ function MapController({
 function RoutingMachine({
   pickup,
   dropoff,
-  returnLoc,
   stops,
   tripType,
   onHistoryChange,
@@ -324,7 +320,6 @@ function RoutingMachine({
 }: {
   pickup: PinLocation
   dropoff: PinLocation
-  returnLoc?: PinLocation
   stops?: StopLocation[]
   tripType?: string
   onHistoryChange?: (histLen: number, reinstatePrev: () => void, reinstateInitial: () => void) => void
@@ -373,23 +368,13 @@ function RoutingMachine({
 
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     
-    if (tripType === 'roundtrip' || tripType === 'shuttle' || tripType === 'multi-day') {
-      // In a round trip, dropoff is the main destination, stops are on the way back (or rather, after the dropoff)
-      if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
-      stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
-      if (isValidCoord(returnLoc?.coordinate)) {
-        addIfValid(returnLoc!.coordinate)
-      } else if (isValidCoord(pickup?.coordinate) && isValidCoord(dropoff?.coordinate)) {
-        addIfValid(pickup!.coordinate)
-      }
-    } else {
-      // One-way: stops are on the way to the dropoff
-      stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
-      if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
-    }
+    // For all trip types, we now follow the sequential form layout:
+    // Pickup -> Stops -> Dropoff (End Location)
+    stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
+    if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
 
     return wps
-  }, [pickup, dropoff, returnLoc, stops, tripType])
+  }, [pickup, dropoff, stops, tripType])
 
   // Apply a specific set of waypoints (for reinstate)
   const applyWaypoints = React.useCallback((wps: L.LatLng[], label: string) => {
@@ -568,7 +553,6 @@ function RoutingMachine({
 export function LiveMap({
   pickup,
   dropoff,
-  returnLoc,
   stops,
   tripType,
   shuttleVehicles = 1,
@@ -584,7 +568,6 @@ export function LiveMap({
 }: {
   pickup?: any
   dropoff?: any
-  returnLoc?: any
   stops?: StopLocation[]
   tripType?: string
   shuttleVehicles?: number
@@ -759,7 +742,7 @@ export function LiveMap({
         />
 
         {/* Auto-zoom */}
-        <MapController pickup={pickup} dropoff={dropoff} returnLoc={returnLoc} stops={stops} userLocation={userLocation} />
+        <MapController pickup={pickup} dropoff={dropoff} stops={stops} userLocation={userLocation} />
 
         {/* Start pin */}
         {isValidCoord(pickup?.coordinate) && (
@@ -814,7 +797,6 @@ export function LiveMap({
           <RoutingMachine
             pickup={pickup}
             dropoff={dropoff}
-            returnLoc={returnLoc}
             stops={stops}
             tripType={tripType}
             onHistoryChange={handleHistoryChange}

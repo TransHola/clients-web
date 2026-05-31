@@ -857,10 +857,6 @@ export function BookingPanel({
       dropoffLoc?.coordinate
     ].filter(Boolean)
 
-    if ((tripType === 'roundtrip' || tripType === 'multi-day') && roundTripMode === 'continuous' && waypoints.length >= 2) {
-      waypoints.push(returnLoc ? returnLoc.coordinate : pickupLoc?.coordinate)
-    }
-
     if (waypoints.length < 2) {
       setRouteDuration(null)
       setRouteDistance(null)
@@ -2447,13 +2443,12 @@ export function BookingPanel({
                   {/* ── DROPOFF ROW ── */}
                   <div className="loc-row-sep" />
                   <div className="loc-row" style={{ paddingTop: '6px', paddingBottom: '6px', borderBottom: missingFields.includes('dropoff') ? '1.5px solid #ef4444' : undefined, alignItems: 'center' }}>
-                    <div className={showReturn && !isShuttle && roundTripMode === 'continuous' ? 'loc-dot-stop' : 'loc-dot-dropoff'}
-                      style={{ borderRadius: showReturn && !isShuttle && roundTripMode === 'continuous' ? '3px' : '3px', background: showReturn && !isShuttle && roundTripMode === 'continuous' ? '#7c3aed' : '#2563eb' }} />
+                    <div className="loc-dot-dropoff" style={{ borderRadius: '3px', background: '#2563eb' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <LocationSearchInput
                         key={`dropoff-${activeDayIdx}`}
                         hasError={missingFields.includes('dropoff')}
-                        placeholder={showReturn && !isShuttle && roundTripMode === 'continuous' ? `Destination / Stop ${stops.length + 1}` : 'End Location'}
+                        placeholder="End Location"
                         value={dropoffValue}
                         bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
                         onSelect={(loc) => {
@@ -2661,54 +2656,7 @@ export function BookingPanel({
 
                     </React.Fragment>
                   )}
-                  {/* ── RETURN (Continuous Round Trip) ── */}
-                  {showReturn && !isShuttle && roundTripMode === 'continuous' && (
-                    <>
-                      <div className="loc-row-sep" />
-                      <div className="loc-row" style={{ background: '#f0fdf4', paddingTop: '6px', paddingBottom: '6px', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ display: 'flex', width: '100%', position: 'relative' }}>
-                          <div className="loc-dot-return" />
-                          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-                            <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#16a34a', marginBottom: '-8px', position: 'relative', zIndex: 10, paddingLeft: '4px' }}>Final Return</div>
-                            <LocationSearchInput
-                              key={`return-${activeDayIdx}`}
-                              placeholder={pickupValue ? `Return: ${pickupValue}` : 'Auto-matches pickup address'}
-                              value={returnValue}
-                              bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
-                              onSelect={(loc) => {
-                                setReturnValue(loc.address);
-                                setReturnLoc(loc);
-                                saveRecentLocation(loc);
-                              }}
-                            />
-                            {/* <div style={{ position: 'absolute', right: '12px', top: '14px', pointerEvents: 'none' }}>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '3px 8px', borderRadius: '20px', border: '1px solid #bbf7d0' }}>Return</span>
-                            </div> */}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', borderTop: '1px solid #e2e8f0', borderBottomLeftRadius: '18px', borderBottomRightRadius: '18px' }}>
-                        <div>
-                          {(() => {
-                            const validStopsCount = stops.filter(s => s.loc).length;
-                            const finalEta = getLegEtaInfo(validStopsCount + 1)?.eta;
-                            if (!finalEta) return null;
-                            return (
-                              <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Flag size={14} color="#16a34a" /> Final return at {formatEtaStr(finalEta)}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        {routeDistance && routeDuration && pickupLoc && dropoffLoc && (
-                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
-                            {formatDistance(routeDistance, clientGeoContext.distanceUnit)} total round-trip · {formatDuration(routeDuration)}
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  {/* ── DROPOFF ENDS HERE ── */}
                 </div>
 
                 {/* ── Pin drag indicators ── */}
