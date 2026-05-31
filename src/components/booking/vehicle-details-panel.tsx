@@ -200,8 +200,15 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                           const parts = log.split('-> Charged');
                           const title = parts[0].replace(/\[Day \d+\]/, '').trim();
                           const mathParts = parts[1].split('=');
-                          const math = mathParts[0].trim();
-                          const total = mathParts[1]?.trim() || '';
+                          const curr = option.currencySymbol || option.currency || '$';
+                          let math = mathParts[0].trim().replace('@', '×');
+                          if (math.includes('× ') && !math.includes('× $') && !math.includes('× ' + curr)) {
+                              math = math.replace('× ', '× ' + curr);
+                          }
+                          let total = mathParts[1]?.trim() || '';
+                          if (total && !total.startsWith('$') && !total.startsWith(curr)) {
+                              total = curr + total;
+                          }
                           
                           return (
                             <div key={lIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderRadius: '6px', marginLeft: '12px', borderLeft: '2px solid #cbd5e1' }}>
