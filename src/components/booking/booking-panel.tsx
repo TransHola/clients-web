@@ -881,7 +881,26 @@ export function BookingPanel({
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       if (!urlParams.get("quote") && !localStorage.getItem("saved_itinerary")) {
-        detectLocation();
+        // Fetch IP-based location for a passive, permission-less initial state
+        fetch('https://ipapi.co/json/')
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.city && data.country_name) {
+              setClientGeoContext({
+                city: data.city,
+                country: data.country_name,
+                countryCode: data.country_code,
+                distanceUnit: (data.country_code === 'US' || data.country_code === 'GB') ? 'mi' : 'km',
+                lat: data.latitude || 25.2048,
+                lon: data.longitude || 55.2708
+              });
+            }
+          })
+          .catch(() => { /* silent fallback */ })
+          .finally(() => {
+             // Still try precise GPS (will prompt user)
+             detectLocation();
+          });
       }
     }
   }, [])
