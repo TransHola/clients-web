@@ -774,33 +774,54 @@ export function BookingPanel({
 
   // ── Validation ────────────────────────────────────────────────────────────
   const isFormValid = React.useMemo(() => {
-    const hasLocations = !!pickupLoc && !!dropoffLoc;
-    if (!hasLocations) return false;
-    if (serviceMode === "scheduled") {
-      if (!startDate || !startTime) return false;
-      if (tripType === 'shuttle') {
-        if (!endTime) return false;
+    if (tripType === 'multi-day' || (tripType === 'roundtrip' && roundTripMode === 'transfer')) {
+      if (multiDayStore.length === 0) return false;
+      for (const day of multiDayStore) {
+         if (!day.pickupLoc || !day.dropoffLoc) return false;
+         if (serviceMode === 'scheduled' && (!day.dateStr || !day.startTime)) return false;
       }
-      if (tripType === 'roundtrip' && roundTripMode === 'continuous') {
-        if (!endDate || !endTime) return false;
+    } else {
+      const hasLocations = !!pickupLoc && !!dropoffLoc;
+      if (!hasLocations) return false;
+      if (serviceMode === "scheduled") {
+        if (!startDate || !startTime) return false;
+        if (tripType === 'shuttle') {
+          if (!endTime) return false;
+        }
+        if (tripType === 'roundtrip' && roundTripMode === 'continuous') {
+          if (!endDate || !endTime) return false;
+        }
       }
     }
     return true;
-  }, [pickupLoc, dropoffLoc, serviceMode, startDate, startTime, tripType, endTime, roundTripMode, endDate])
+  }, [pickupLoc, dropoffLoc, serviceMode, startDate, startTime, tripType, endTime, roundTripMode, endDate, multiDayStore])
 
   const missingFields = React.useMemo(() => {
     const missing: string[] = []
-    if (!pickupLoc) missing.push("pickup")
-    if (!dropoffLoc) missing.push("dropoff")
-    if (serviceMode === "scheduled" && !startDate) missing.push("date")
-    if (serviceMode === "scheduled" && !startTime) missing.push("start time")
-    if (serviceMode === "scheduled" && tripType === 'shuttle' && !endTime) missing.push("finish time")
-    if (serviceMode === "scheduled" && tripType === 'roundtrip' && roundTripMode === 'continuous') {
-      if (!endDate) missing.push("return date")
-      if (!endTime) missing.push("return time")
+
+    if (tripType === 'multi-day' || (tripType === 'roundtrip' && roundTripMode === 'transfer')) {
+       const activeDay = multiDayStore[activeDayIdx]
+       if (activeDay) {
+          if (!activeDay.pickupLoc) missing.push("pickup")
+          if (!activeDay.dropoffLoc) missing.push("dropoff")
+          if (serviceMode === 'scheduled') {
+             if (!activeDay.dateStr) missing.push("date")
+             if (!activeDay.startTime) missing.push("start time")
+          }
+       }
+    } else {
+      if (!pickupLoc) missing.push("pickup")
+      if (!dropoffLoc) missing.push("dropoff")
+      if (serviceMode === "scheduled" && !startDate) missing.push("date")
+      if (serviceMode === "scheduled" && !startTime) missing.push("start time")
+      if (serviceMode === "scheduled" && tripType === 'shuttle' && !endTime) missing.push("finish time")
+      if (serviceMode === "scheduled" && tripType === 'roundtrip' && roundTripMode === 'continuous') {
+        if (!endDate) missing.push("return date")
+        if (!endTime) missing.push("return time")
+      }
     }
     return missing
-  }, [pickupLoc, dropoffLoc, serviceMode, startDate, startTime, tripType, endTime, roundTripMode, endDate])
+  }, [pickupLoc, dropoffLoc, serviceMode, startDate, startTime, tripType, endTime, roundTripMode, endDate, multiDayStore, activeDayIdx])
 
   // Sync stops to parent (and to the map) whenever the list changes
   React.useEffect(() => { onStopsChange?.(stops) }, [stops])
