@@ -448,7 +448,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         </button>
         <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: '0 0 3px' }}>Choose your ride</h2>
         <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, margin: 0 }}>
-          {tripType === 'shuttle' ? `${passengers} vehicle${passengers > 1 ? 's' : ''}` : `${passengers} passenger${passengers > 1 ? 's' : ''}`} · {routeDistanceKm} {(bookingDetails?.countryCode?.toUpperCase() === 'US' || bookingDetails?.countryCode?.toUpperCase() === 'GB') ? 'mi' : 'km'} · {currency}
+          {tripType === 'shuttle' ? `${passengers} vehicle${passengers > 1 ? 's' : ''}` : `${passengers} passenger${passengers > 1 ? 's' : ''}`} · {routeDistanceKm} {bookingDetails?.distanceUnit === 'mi' ? 'mi' : 'km'} · {currency}
         </p>
 
         {/* Shuttle route direction display */}
