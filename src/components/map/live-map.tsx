@@ -314,6 +314,7 @@ function RoutingMachine({
   dropoff,
   stops,
   tripType,
+  roundTripMode,
   onHistoryChange,
   onRouteFound,
   onAutoSaveTrigger,
@@ -322,6 +323,7 @@ function RoutingMachine({
   dropoff: PinLocation
   stops?: StopLocation[]
   tripType?: string
+  roundTripMode?: string
   onHistoryChange?: (histLen: number, reinstatePrev: () => void, reinstateInitial: () => void) => void
   onRouteFound?: (durationSec: number, distanceM: number, oneWayDur?: number, oneWayDist?: number) => void
   onAutoSaveTrigger?: () => void
@@ -373,8 +375,12 @@ function RoutingMachine({
     stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
     if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
 
+    if ((tripType === 'roundtrip' || tripType === 'multi-day') && roundTripMode === 'continuous') {
+      if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
+    }
+
     return wps
-  }, [pickup, dropoff, stops, tripType])
+  }, [pickup, dropoff, stops, tripType, roundTripMode])
 
   // Apply a specific set of waypoints (for reinstate)
   const applyWaypoints = React.useCallback((wps: L.LatLng[], label: string) => {
@@ -555,6 +561,7 @@ export function LiveMap({
   dropoff,
   stops,
   tripType,
+  roundTripMode,
   shuttleVehicles = 1,
   userLocation,
   onPickupMoved,
@@ -570,6 +577,7 @@ export function LiveMap({
   dropoff?: any
   stops?: StopLocation[]
   tripType?: string
+  roundTripMode?: string
   shuttleVehicles?: number
   userLocation?: { lat: number; lon: number } | null
   onPickupMoved?: (loc: PinLocation) => void
@@ -799,6 +807,7 @@ export function LiveMap({
             dropoff={dropoff}
             stops={stops}
             tripType={tripType}
+            roundTripMode={roundTripMode}
             onHistoryChange={handleHistoryChange}
             onRouteFound={handleRouteFound}
             onAutoSaveTrigger={autoSaveRoute}
