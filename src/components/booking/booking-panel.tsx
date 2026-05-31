@@ -1286,6 +1286,32 @@ export function BookingPanel({
                       <Car style={{ width: '14px', height: '14px', color: '#10b981' }} /> {shuttleVehicles} Van{shuttleVehicles > 1 ? 's' : ''}
                     </span>
                   )}
+                  {tripType !== 'multi-day' && startDate && (
+                    <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                      <CalendarDays style={{ width: '14px', height: '14px', color: '#3b82f6' }} />
+                      {format(parseISO(startDate), 'MMM d, yyyy')}
+                      {startTime ? ` • ${(() => {
+                        const fmt = (t?: string) => {
+                          if (!t || t === 'TBD') return 'TBD';
+                          const [h, m] = t.split(':');
+                          if (!h || !m) return t;
+                          const hNum = parseInt(h, 10);
+                          const ampm = hNum >= 12 ? 'PM' : 'AM';
+                          const h12 = hNum % 12 || 12;
+                          return `${h12}:${m} ${ampm}`;
+                        };
+                        const startStr = fmt(startTime);
+                        const endStr = endTime ? fmt(endTime) : '';
+                        if (endTime && endDate && endDate !== startDate) {
+                          return `${startStr} - ${format(parseISO(endDate), 'MMM d')} ${endStr}`;
+                        }
+                        if (endTime) {
+                          return `${startStr} - ${endStr}`;
+                        }
+                        return startStr;
+                      })()}` : ''}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1364,37 +1390,27 @@ export function BookingPanel({
                     <div style={{ width: '2px', position: 'absolute', left: '5px', top: '16px', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
                     <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#3b82f6', flexShrink: 0, marginTop: '4px', zIndex: 1 }} />
                     <div>
-                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Pick-up Location</p>
+                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Start Location</p>
                       <p style={{ margin: '4px 0 0', fontSize: '15px', fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{pickupValue || 'Not specified'}</p>
-
-                      <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                        <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                          <CalendarDays style={{ width: '13px', height: '13px', color: '#3b82f6' }} /> {startDate ? format(parseISO(startDate), 'MMM d, yyyy') : 'TBD'}
-                        </span>
-                        <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                          <Clock style={{ width: '13px', height: '13px', color: '#f59e0b' }} />
-                          {(() => {
-                            const fmt = (t?: string) => {
-                              if (!t || t === 'TBD') return 'TBD';
-                              const [h, m] = t.split(':');
-                              if (!h || !m) return t;
-                              const hNum = parseInt(h, 10);
-                              const ampm = hNum >= 12 ? 'PM' : 'AM';
-                              const h12 = hNum % 12 || 12;
-                              return `${h12}:${m} ${ampm}`;
-                            };
-                            const startStr = fmt(startTime);
-                            const endStr = endTime ? fmt(endTime) : '';
-                            if (endTime && endDate && endDate !== startDate) {
-                              return `${startStr} - ${format(parseISO(endDate), 'MMM d')} ${endStr}`;
-                            }
-                            if (endTime) {
-                              return `${startStr} - ${endStr}`;
-                            }
-                            return startStr;
-                          })()}
-                        </span>
-                      </div>
+                      {(() => {
+                        if (!routeLegs || !routeLegs[0]) return null;
+                        const isMiles = clientGeoContext.distanceUnit === 'mi';
+                        const dist = routeLegs[0].distance ? Math.round(isMiles ? routeLegs[0].distance * 0.000621371 : routeLegs[0].distance / 1000) : 0;
+                        const dur = Math.ceil((routeLegs[0].duration || 0) * 1.15);
+                        const hrs = Math.floor(dur / 3600);
+                        const mins = Math.floor((dur % 3600) / 60);
+                        const durStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                        return (
+                          <div style={{ marginTop: '16px', background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '12px', border: '1px dashed #cbd5e1' }}>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                              <Navigation style={{ width: '12px', height: '12px', color: '#8b5cf6' }} /> {dist} {isMiles ? 'mi' : 'km'}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                              <Timer style={{ width: '12px', height: '12px', color: '#10b981' }} /> {durStr}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1423,42 +1439,35 @@ export function BookingPanel({
                             </div>
                           );
                         })()}
+                        {(() => {
+                          if (!routeLegs || !routeLegs[i + 1]) return null;
+                          const isMiles = clientGeoContext.distanceUnit === 'mi';
+                          const dist = routeLegs[i + 1].distance ? Math.round(isMiles ? routeLegs[i + 1].distance * 0.000621371 : routeLegs[i + 1].distance / 1000) : 0;
+                          const dur = Math.ceil((routeLegs[i + 1].duration || 0) * 1.15);
+                          const hrs = Math.floor(dur / 3600);
+                          const mins = Math.floor((dur % 3600) / 60);
+                          const durStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                          return (
+                            <div style={{ marginTop: '16px', background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '12px', border: '1px dashed #cbd5e1' }}>
+                              <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                <Navigation style={{ width: '12px', height: '12px', color: '#8b5cf6' }} /> {dist} {isMiles ? 'mi' : 'km'}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                <Timer style={{ width: '12px', height: '12px', color: '#10b981' }} /> {durStr}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
-
-                  {/* Distance & Duration */}
-                  <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: '24px' }}>
-                    <div style={{ width: '2px', position: 'absolute', left: '5px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
-                    <div style={{ width: '12px', flexShrink: 0 }} />
-                    <div>
-                      <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '16px', border: '1px dashed #cbd5e1' }}>
-                        <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                          <Navigation style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
-                          {(() => {
-                            const isMiles = clientGeoContext.distanceUnit === 'mi';
-                            const dist = routeDistance ? Math.round(isMiles ? routeDistance * 0.000621371 : routeDistance / 1000) : 0;
-                            return `${dist} ${isMiles ? 'mi' : 'km'}`;
-                          })()}
-                        </span>
-                        <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                          <Timer style={{ width: '13px', height: '13px', color: '#10b981' }} />
-                          {(() => {
-                            const hrs = Math.floor((routeDuration || 0) / 3600);
-                            const mins = Math.floor(((routeDuration || 0) % 3600) / 60);
-                            return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Drop-off */}
                   <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: tripType === 'roundtrip' || tripType === 'shuttle' ? '24px' : '0' }}>
                     <div style={{ width: '2px', position: 'absolute', left: '5px', top: '0', height: tripType === 'roundtrip' || tripType === 'shuttle' ? '100%' : '4px', background: '#e2e8f0', zIndex: 0 }} />
                     <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#10b981', flexShrink: 0, marginTop: '4px', zIndex: 1 }} />
                     <div>
-                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Drop-off Location</p>
+                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>End Destination</p>
                       <p style={{ margin: '4px 0 0', fontSize: '15px', fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{dropoffValue || 'Not specified'}</p>
                       {(() => {
                         const legInfo = getLegEtaInfo(stops.length);
