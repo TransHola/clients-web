@@ -1958,7 +1958,7 @@ export function BookingPanel({
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {tripType === 'one-way'
                               ? (startDate ? format(parseISO(startDate), 'PPP') : <span>Pick a date</span>)
-                              : (multiDayStore.length > 0 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
+                              : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'PPP') : multiDayStore.length > 1 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
                           </span>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 99999 }}>
@@ -2346,6 +2346,7 @@ export function BookingPanel({
                         <LocationSearchInput
                           key={`pickup-${activeDayIdx}`}
                           hasError={missingFields.includes('pickup')}
+                          disabled={!startDate}
                           placeholder="Start Location"
                           value={pickupValue}
                           showLocateMe
@@ -2552,7 +2553,7 @@ export function BookingPanel({
                       {/* ── ADD STOP BUTTON ── */}
                       <div className="loc-row-sep" />
                       {(() => {
-                        const canAddStop = stops.length === 0 || stops[stops.length - 1].loc !== null;
+                        const canAddStop = pickupLoc !== null && (stops.length === 0 || stops[stops.length - 1].loc !== null);
                         return (
                           <div className="loc-row" style={{ alignItems: 'center', background: '#fafafa', paddingTop: '8px', paddingBottom: '8px', opacity: canAddStop ? 1 : 0.5, transition: 'opacity 0.2s' }}>
                             <div style={{ width: '10px', height: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2585,6 +2586,7 @@ export function BookingPanel({
                       <LocationSearchInput
                         key={`dropoff-${activeDayIdx}`}
                         hasError={missingFields.includes('dropoff')}
+                        disabled={!pickupLoc}
                         placeholder="End Location"
                         value={dropoffValue}
                         bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}

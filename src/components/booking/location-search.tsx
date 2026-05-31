@@ -68,6 +68,7 @@ export function LocationSearchInput({
   value: controlledValue,
   bias,
   hasError = false,
+  disabled = false,
 }: {
   placeholder: string
   onSelect: (location: LocationResult) => void
@@ -75,6 +76,7 @@ export function LocationSearchInput({
   onLocateMe?: () => void
   value?: string
   hasError?: boolean
+  disabled?: boolean
   bias?: { lat: number; lon: number } | null
 }) {
   const [query, setQuery] = React.useState(controlledValue || "")
@@ -203,6 +205,7 @@ export function LocationSearchInput({
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <input
           type="text"
+          disabled={disabled}
           placeholder={hasError ? `Required: ${placeholder}` : placeholder}
           value={query}
           onChange={(e) => {
@@ -221,6 +224,8 @@ export function LocationSearchInput({
             border: 'none', outline: 'none',
             background: 'transparent',
             color: hasError ? '#ef4444' : '#0f172a',
+            cursor: disabled ? 'not-allowed' : 'text',
+            opacity: disabled ? 0.5 : 1
           }}
           className={hasError ? 'placeholder-red-400' : ''}
         />
