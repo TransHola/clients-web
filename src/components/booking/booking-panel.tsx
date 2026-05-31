@@ -916,7 +916,7 @@ export function BookingPanel({
       dropoffLoc?.coordinate
     ].filter(Boolean)
 
-    if ((tripType === 'roundtrip' || tripType === 'multi-day') && roundTripMode === 'continuous' && waypoints.length >= 2) {
+    if (tripType === 'roundtrip' && roundTripMode === 'continuous' && waypoints.length >= 2) {
       waypoints.push(pickupLoc?.coordinate)
     }
 

@@ -386,7 +386,7 @@ function RoutingMachine({
     stops?.forEach(s => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
     if (isValidCoord(dropoff?.coordinate)) addIfValid(dropoff!.coordinate)
 
-    if ((tripType === 'roundtrip' || tripType === 'multi-day') && roundTripMode === 'continuous') {
+    if (tripType === 'roundtrip' && roundTripMode === 'continuous') {
       if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     }
 
