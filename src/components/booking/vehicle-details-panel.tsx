@@ -33,14 +33,25 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                 <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" /><circle cx="7" cy="17" r="2" /><path d="M9 17h6" /><circle cx="17" cy="17" r="2" /></svg>
                     </div>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '12px', fontWeight: 800, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{v.count}x</span>
-                        <p style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>{v.type} Class</p>
+                        <p style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>{v.type}</p>
                       </div>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: '4px 0 0' }}>{days} Day{days > 1 ? 's' : ''} Itinerary</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 0' }}>
+                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: 0 }}>{days} Day{days > 1 ? 's' : ''} Itinerary</p>
+                        {v.seats && (
+                           <>
+                             <span style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#cbd5e1' }} />
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                               <Users size={11} color="#64748b" />
+                               <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>{v.seats} Pax</span>
+                             </div>
+                           </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -78,28 +89,28 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
         {amenities.length > 0 && (
           <div style={{ marginBottom: '24px', paddingTop: '0' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-               <h5 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0ea5e9', margin: 0 }}>Requested Amenities</h5>
+              <h5 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0ea5e9', margin: 0 }}>Requested Amenities</h5>
             </div>
             <p style={{ fontSize: '10px', color: '#64748b', margin: '0 0 12px', padding: '8px', background: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #cbd5e1' }}>
-               <strong>Note:</strong> The amenities requested below will be based on fleet availability on the day of service.
+              <strong>Note:</strong> The amenities requested below will be based on fleet availability on the day of service.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {amenities.map((am) => {
-                 const isWater = am.includes('Water');
-                 const isBaby = am.includes('Seat');
-                 const isVIP = am.includes('VIP');
-                 const Icon = isWater ? Droplets : isBaby ? Baby : isVIP ? ShieldCheck : Zap;
-                 return (
-                   <div key={am} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', border: '1px solid #e0f2fe', borderRadius: '12px', padding: '10px 12px' }}>
-                     <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                       <Icon style={{ width: '15px', height: '15px', color: '#0284c7' }} />
-                     </div>
-                     <div style={{ flex: 1 }}>
-                       <p style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{am}</p>
-                     </div>
-                     <CheckCircle2 style={{ width: '16px', height: '16px', color: '#0284c7' }} />
-                   </div>
-                 )
+                const isWater = am.includes('Water');
+                const isBaby = am.includes('Seat');
+                const isVIP = am.includes('VIP');
+                const Icon = isWater ? Droplets : isBaby ? Baby : isVIP ? ShieldCheck : Zap;
+                return (
+                  <div key={am} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', border: '1px solid #e0f2fe', borderRadius: '12px', padding: '10px 12px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Icon style={{ width: '15px', height: '15px', color: '#0284c7' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{am}</p>
+                    </div>
+                    <CheckCircle2 style={{ width: '16px', height: '16px', color: '#0284c7' }} />
+                  </div>
+                )
               })}
             </div>
           </div>
@@ -109,7 +120,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
           <div style={{ padding: '14px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
               <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <Users style={{ width: '12px', height: '12px', color: 'white' }} />
+                <Users style={{ width: '12px', height: '12px', color: 'white' }} />
               </div>
               <span style={{ fontSize: '14px', fontWeight: 800, color: '#1e40af', letterSpacing: '-0.3px' }}>100% ADA Guaranteed</span>
             </div>
@@ -124,7 +135,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
       {/* Pinned Static Footer containing Totals and Buttons */}
       <div style={{ flexShrink: 0, background: '#f8fafc', borderTop: '1px solid #e2e8f0', boxShadow: '0 -4px 16px rgba(0,0,0,0.02)' }}>
         <div style={{ padding: '16px 24px 24px 24px' }}>
-          
+
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569', marginBottom: '8px' }}>
             <span>Subtotal (Vehicles)</span>
             <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {option.vehicles ? option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0).toFixed(2) : parseFloat(option.price).toFixed(2)}</span>
@@ -143,7 +154,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
 
           {/* Portal Target for Booking Buttons */}
           <div id="vehicle-details-footer-portal"></div>
-          
+
         </div>
       </div>
     </div>
