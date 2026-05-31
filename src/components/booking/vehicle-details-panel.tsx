@@ -1,9 +1,12 @@
 "use client"
 
 import * as React from "react"
+import { useState } from "react"
 import { Users, Briefcase, Zap, ShieldCheck, CheckCircle2, ChevronRight, ChevronDown, Droplets, Wifi, Coffee, Baby, MapPin } from "lucide-react"
 
 export function VehicleDetailsPanel({ option, amenities = [], adaRequired = false, adaVehicleCount = 1 }: { option: any; amenities?: string[]; adaRequired?: boolean; adaVehicleCount?: number }) {
+  const [engineModalOpen, setEngineModalOpen] = useState(false);
+
   // Pre-compiled read-only presentation UI
 
   if (!option) return null
@@ -18,7 +21,10 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
     }}>
       {/* Scrollable Main Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px', paddingBottom: '16px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: 900, margin: '0 0 4px', color: '#0f172a' }}>Pricing Breakdown</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 900, margin: 0, color: '#0f172a' }}>Pricing Breakdown</h3>
+          <button onClick={() => setEngineModalOpen(true)} style={{ fontSize: '11px', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}>Verify Engine Math (Dev)</button>
+        </div>
         <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 24px' }}>Review invoice details and requested amenities</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
@@ -152,6 +158,28 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
 
         </div>
       </div>
+      
+      {engineModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>Rate Engine Calculation Log</h3>
+              <button onClick={() => setEngineModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#64748b' }}>&times;</button>
+            </div>
+            <div style={{ padding: '16px', overflowY: 'auto', flex: 1, background: '#1e293b' }}>
+              {(option.vehicles || [{ type: option.label || option.title || 'Standard', debugLog: option.debugLog }]).map((v: any, idx: number) => (
+                <div key={idx} style={{ marginBottom: '24px' }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: '14px', fontWeight: 800, color: '#e2e8f0' }}>Vehicle: {v.type || option.title}</h4>
+                  <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#10b981', background: '#0f172a', padding: '12px', borderRadius: '6px', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                    {v.debugLog && v.debugLog.length > 0 ? v.debugLog.join('\n') : 'No engine log data available. Check backend server.'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      
     </div>
   )
 }
