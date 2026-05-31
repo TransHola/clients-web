@@ -1480,47 +1480,6 @@ export function BookingPanel({
                     </div>
                   </div>
 
-                  {/* Round Trip Return Leg */}
-                  {tripType === 'roundtrip' && (
-                    <>
-                      {/* <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: '24px' }}>
-                        <div style={{ width: '2px', position: 'absolute', left: '5px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
-                        <div style={{ width: '12px', flexShrink: 0 }} />
-                        <div>
-                          <div style={{ background: '#fef2f2', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '8px', border: '1px dashed #fca5a5' }}>
-                            <span style={{ fontSize: '12px', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                              <Repeat style={{ width: '13px', height: '13px' }} /> Return Journey
-                            </span>
-                          </div>
-                        </div>
-                      </div> */}
-
-                      <div style={{ display: 'flex', gap: '16px', position: 'relative' }}>
-                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#3b82f6', flexShrink: 0, marginTop: '4px', zIndex: 1 }} />
-                        <div>
-                          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Return To</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '15px', fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{returnValue || pickupValue || 'Not specified'}</p>
-                          {(() => {
-                            const legInfo = getLegEtaInfo(stops.length + 1);
-                            if (!legInfo || !legInfo.eta) return null;
-                            let dayOffset = null;
-                            if (legInfo.eta.date && startDate && legInfo.eta.date !== startDate) {
-                              const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(startDate).getTime()) / 86400000);
-                              if (diff > 0) dayOffset = `+${diff} day${diff > 1 ? 's' : ''}`;
-                            }
-                            return (
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                                <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                  <Clock style={{ width: '13px', height: '13px', color: '#3b82f6' }} />
-                                  {formatTimeStr(legInfo.eta.time)} {dayOffset && <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700 }}>{dayOffset}</span>}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </>
-                  )}
 
                   {/* Shuttle Looping Info */}
                   {tripType === 'shuttle' && (
