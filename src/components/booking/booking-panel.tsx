@@ -1393,6 +1393,31 @@ export function BookingPanel({
                       <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Start Location</p>
                       <p style={{ margin: '4px 0 0', fontSize: '15px', fontWeight: 600, color: '#0f172a', lineHeight: 1.4 }}>{pickupValue || 'Not specified'}</p>
                       {(() => {
+                        const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                        const t = startTime || '00:00';
+                        const arr = formatTimeStr(t);
+                        const depObj = activeDate ? addSecondsToDatetime(activeDate, t, pickupWaitMin * 60) : { time: t, date: activeDate };
+                        const dep = formatTimeStr(depObj.time);
+                        let dayOffset = null;
+                        if (depObj.date && activeDate && depObj.date !== activeDate) {
+                          const diff = Math.round((new Date(depObj.date).getTime() - new Date(activeDate).getTime()) / 86400000);
+                          if (diff > 0) dayOffset = `+${diff}d`;
+                        }
+                        return (
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {arr}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {pickupWaitMin}m
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Depart {dep} {dayOffset && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffset}</span>}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      {(() => {
                         if (!routeLegs || !routeLegs[0]) return null;
                         const isMiles = clientGeoContext.distanceUnit === 'mi';
                         const dist = routeLegs[0].distance ? Math.round(isMiles ? routeLegs[0].distance * 0.000621371 : routeLegs[0].distance / 1000) : 0;
@@ -1425,16 +1450,27 @@ export function BookingPanel({
                         {(() => {
                           const legInfo = getLegEtaInfo(i);
                           if (!legInfo || !legInfo.eta) return null;
-                          let dayOffset = null;
-                          if (legInfo.eta.date && startDate && legInfo.eta.date !== startDate) {
-                            const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(startDate).getTime()) / 86400000);
-                            if (diff > 0) dayOffset = `+${diff} day${diff > 1 ? 's' : ''}`;
+                          const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                          let dayOffsetArr = null;
+                          if (legInfo.eta.date && activeDate && legInfo.eta.date !== activeDate) {
+                            const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
+                            if (diff > 0) dayOffsetArr = `+${diff}d`;
+                          }
+                          let dayOffsetDep = null;
+                          if (legInfo.departEta && legInfo.departEta.date && activeDate && legInfo.departEta.date !== activeDate) {
+                            const diff = Math.round((new Date(legInfo.departEta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
+                            if (diff > 0) dayOffsetDep = `+${diff}d`;
                           }
                           return (
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                              <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                <Clock style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
-                                {formatTimeStr(legInfo.eta.time)} {dayOffset && <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700 }}>{dayOffset}</span>}
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin || 0}m
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Depart {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}
                               </span>
                             </div>
                           );
@@ -1472,16 +1508,27 @@ export function BookingPanel({
                       {(() => {
                         const legInfo = getLegEtaInfo(stops.length);
                         if (!legInfo || !legInfo.eta) return null;
-                        let dayOffset = null;
-                        if (legInfo.eta.date && startDate && legInfo.eta.date !== startDate) {
-                          const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(startDate).getTime()) / 86400000);
-                          if (diff > 0) dayOffset = `+${diff} day${diff > 1 ? 's' : ''}`;
+                        const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : startDate;
+                        let dayOffsetArr = null;
+                        if (legInfo.eta.date && activeDate && legInfo.eta.date !== activeDate) {
+                          const diff = Math.round((new Date(legInfo.eta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
+                          if (diff > 0) dayOffsetArr = `+${diff}d`;
+                        }
+                        let dayOffsetDep = null;
+                        if (legInfo.departEta && legInfo.departEta.date && activeDate && legInfo.departEta.date !== activeDate) {
+                          const diff = Math.round((new Date(legInfo.departEta.date).getTime() - new Date(activeDate).getTime()) / 86400000);
+                          if (diff > 0) dayOffsetDep = `+${diff}d`;
                         }
                         return (
-                          <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                            <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                              <Clock style={{ width: '13px', height: '13px', color: '#10b981' }} />
-                              {formatTimeStr(legInfo.eta.time)} {dayOffset && <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700 }}>{dayOffset}</span>}
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {dropoffWaitMin || 0}m
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                              <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Finish {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}
                             </span>
                           </div>
                         );
