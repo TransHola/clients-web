@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Users, Briefcase, Zap, ShieldCheck, CheckCircle2, ChevronRight, Droplets, Wifi, Coffee, Baby, MapPin } from "lucide-react"
+import { Users, Briefcase, Zap, ShieldCheck, CheckCircle2, ChevronRight, ChevronDown, Droplets, Wifi, Coffee, Baby, MapPin } from "lucide-react"
 
 export function VehicleDetailsPanel({ option, amenities = [], adaRequired = false, adaVehicleCount = 1 }: { option: any; amenities?: string[]; adaRequired?: boolean; adaVehicleCount?: number }) {
   // Pre-compiled read-only presentation UI
@@ -10,9 +10,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
 
   return (
     <div style={{
-      background: 'white',
-      borderRadius: '18px',
-      boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+      width: '100%',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
@@ -23,53 +21,57 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
         <h3 style={{ fontSize: '18px', fontWeight: 900, margin: '0 0 4px', color: '#0f172a' }}>Pricing Breakdown</h3>
         <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 24px' }}>Review invoice details and requested amenities</p>
 
-        <div style={{ background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '24px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-              <tr>
-                <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</th>
-                <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>Qty</th>
-                <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Rate</th>
-                <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(option.vehicles || [{ type: option.label || option.title || 'Standard', count: 1, seats: option.totalSeats || option.seats || 4 }]).map((v: any, idx: number) => {
-                const days = Math.max(1, option.daysCount || 1);
-                const avgDailyRate = v.price !== undefined ? v.price / days : 0;
-                
-                return Array.from({ length: days }).map((_, dayIdx) => {
-                  const hasBreakdown = v.dailyBreakdown && v.dailyBreakdown.length > dayIdx;
-                  // If we have a breakdown, it is the total cost for that day for ALL vehicles of this type.
-                  // Divide it by v.count to get the PER-VEHICLE rate for that day.
-                  const dayTotalCost = hasBreakdown ? v.dailyBreakdown[dayIdx] : avgDailyRate * (v.count || 1);
-                  const dayRate = hasBreakdown ? dayTotalCost / (v.count || 1) : avgDailyRate;
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+          {(option.vehicles || [{ type: option.label || option.title || 'Standard', count: 1, seats: option.totalSeats || option.seats || 4 }]).map((v: any, idx: number) => {
+            const days = Math.max(1, option.daysCount || 1);
+            const avgDailyRate = v.price !== undefined ? v.price / days : 0;
+            const totalVehicleCost = v.price !== undefined ? v.price * (v.count || 1) : 0;
+            const curr = option.currencySymbol || option.currency || '$';
 
-                  return (
-                  <tr key={`${idx}-${dayIdx}`} style={{ borderBottom: dayIdx === days - 1 && idx === (option.vehicles?.length || 1) - 1 ? 'none' : '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
-                        </div>
-                        <div>
-                          <p style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>{v.type} Class</p>
-                          <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>{days > 1 ? `Day ${dayIdx + 1}` : 'Full Trip'}</p>
-                        </div>
+            return (
+              <div key={idx} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+                <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{v.count}x</span>
+                        <p style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>{v.type} Class</p>
                       </div>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#475569', textAlign: 'center' }}>{v.count}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>
-                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${dayRate.toFixed(2)}` : '-'}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>
-                      {v.price !== undefined ? `${option.currencySymbol || option.currency || '$'}${dayTotalCost.toFixed(2)}` : '-'}
-                    </td>
-                  </tr>
-                )})
-              })}
-            </tbody>
-          </table>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: '4px 0 0' }}>{days} Day{days > 1 ? 's' : ''} Itinerary</p>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px' }}>Total</p>
+                    <p style={{ fontSize: '16px', fontWeight: 900, color: '#0f172a', margin: 0 }}>{curr}{totalVehicleCost.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                {days > 1 && (
+                  <details style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+                    <summary style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 700, color: '#475569', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', listStyle: 'none' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>View Daily Breakdown</span>
+                      <ChevronDown size={14} color="#94a3b8" />
+                    </summary>
+                    <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {Array.from({ length: days }).map((_, dayIdx) => {
+                        const hasBreakdown = v.dailyBreakdown && v.dailyBreakdown.length > dayIdx;
+                        const dayTotalCost = hasBreakdown ? v.dailyBreakdown[dayIdx] : avgDailyRate * (v.count || 1);
+                        return (
+                          <div key={dayIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748b' }}>Day {dayIdx + 1}</span>
+                            <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>{curr}{dayTotalCost.toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Requested Amenities */}

@@ -315,6 +315,7 @@ function RoutingMachine({
   stops,
   tripType,
   roundTripMode,
+  multiDayStore,
   onHistoryChange,
   onRouteFound,
   onAutoSaveTrigger,
@@ -324,6 +325,7 @@ function RoutingMachine({
   stops?: StopLocation[]
   tripType?: string
   roundTripMode?: string
+  multiDayStore?: any[]
   onHistoryChange?: (histLen: number, reinstatePrev: () => void, reinstateInitial: () => void) => void
   onRouteFound?: (durationSec: number, distanceM: number, oneWayDur?: number, oneWayDist?: number) => void
   onAutoSaveTrigger?: () => void
@@ -367,6 +369,15 @@ function RoutingMachine({
     const addIfValid = (c: any) => {
       if (isValidCoord(c)) wps.push(L.latLng(Number(c.lat), Number(c.lon)));
     };
+
+    if (tripType === 'multi-day' && multiDayStore && multiDayStore.length > 0) {
+      multiDayStore.forEach(day => {
+        if (isValidCoord(day.pickupLoc?.coordinate)) addIfValid(day.pickupLoc!.coordinate)
+        day.stops?.forEach((s: any) => { if (isValidCoord(s.loc?.coordinate)) addIfValid(s.loc!.coordinate) })
+        if (isValidCoord(day.dropoffLoc?.coordinate)) addIfValid(day.dropoffLoc!.coordinate)
+      })
+      return wps
+    }
 
     if (isValidCoord(pickup?.coordinate)) addIfValid(pickup!.coordinate)
     
@@ -563,6 +574,7 @@ export function LiveMap({
   tripType,
   roundTripMode,
   shuttleVehicles = 1,
+  multiDayStore,
   userLocation,
   onPickupMoved,
   onDropoffMoved,
@@ -579,6 +591,7 @@ export function LiveMap({
   tripType?: string
   roundTripMode?: string
   shuttleVehicles?: number
+  multiDayStore?: any[]
   userLocation?: { lat: number; lon: number } | null
   onPickupMoved?: (loc: PinLocation) => void
   onDropoffMoved?: (loc: PinLocation) => void
@@ -932,6 +945,33 @@ export function LiveMap({
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
                             <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveRouteDistance || 0)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : tripType === 'multi-day' && multiDayStore && multiDayStore.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                  <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(multiDayStore.reduce((acc, day) => acc + (day.routeDuration || 0), 0))}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(multiDayStore.reduce((acc, day) => acc + (day.routeDistance || 0), 0))}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 800, color: "#2563eb", background: "#eff6ff", padding: "2px 6px", borderRadius: "4px" }}>Multi-Day Itinerary</span>
+                </div>
+                {multiDayStore.length > 1 && (
+                  <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
+                    <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📅 View {multiDayStore.length} Days Breakdown</span>
+                      <span style={{ fontSize: "9px" }}>▼</span>
+                    </summary>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
+                      {multiDayStore.map((day, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Day {i + 1}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(day.routeDuration || 0)}</span>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(day.routeDistance || 0)}</span>
                           </div>
                         </div>
                       ))}

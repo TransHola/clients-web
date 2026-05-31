@@ -17,6 +17,7 @@ export default function Home() {
   const [selectedQuote, setSelectedQuote] = React.useState<any | null>(null)
   const [tripType, setTripType] = React.useState<string>("oneway")
   const [shuttleVehicles, setShuttleVehicles] = React.useState<number>(1)
+  const [multiDayStore, setMultiDayStore] = React.useState<any[]>([])
   const [countryCode, setCountryCode] = React.useState<string>("AE")
   const [distanceUnit, setDistanceUnit] = React.useState<string>("km")
 
@@ -128,6 +129,7 @@ export default function Home() {
               onReturnChange={setReturnLoc}
               onCountryCodeChange={setCountryCode}
               onDistanceUnitChange={setDistanceUnit}
+              onMultiDayStoreChange={setMultiDayStore}
             />
           </div>
         </div>
@@ -147,6 +149,7 @@ export default function Home() {
             stops={stops}
             tripType={tripType}
             shuttleVehicles={shuttleVehicles}
+            multiDayStore={multiDayStore}
             userLocation={userLocation}
             countryCode={countryCode}
             distanceUnit={distanceUnit}

@@ -159,6 +159,7 @@ export function BookingPanel({
   onReturnChange,
   onCountryCodeChange,
   onDistanceUnitChange,
+  onMultiDayStoreChange,
 }: {
   onPickupChange?: (loc: any) => void
   onDropoffChange?: (loc: any) => void
@@ -175,6 +176,7 @@ export function BookingPanel({
   onReturnChange?: (loc: any) => void
   onCountryCodeChange?: (cc: string) => void
   onDistanceUnitChange?: (unit: string) => void
+  onMultiDayStoreChange?: (store: any[]) => void
 }) {
   const router = useRouter()
   const [activeStep, setActiveStep] = React.useState<"search" | "quotation" | "timeline">("search")
@@ -648,7 +650,7 @@ export function BookingPanel({
 
       nextStore[activeDayIdx] = {
         ...nextStore[activeDayIdx],
-        pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, routeDistance: routeDistance || undefined, routeDuration: routeDuration || undefined
+        pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, routeDistance: routeDistance || undefined, routeDuration: routeDuration || undefined, routeLegs: routeLegs || undefined
       }
 
       // Auto-propagate dropoff to the next day's pickup
@@ -665,7 +667,13 @@ export function BookingPanel({
       }
       return nextStore
     })
-  }, [pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, activeDayIdx, routeDistance, routeDuration])
+  }, [pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, activeDayIdx, routeDistance, routeDuration, routeLegs])
+
+  React.useEffect(() => {
+    if (onMultiDayStoreChange) {
+      onMultiDayStoreChange(multiDayStore)
+    }
+  }, [multiDayStore, onMultiDayStoreChange])
 
   const handleTabSwitch = (idx: number) => {
     isSwappingRef.current = true
@@ -686,6 +694,7 @@ export function BookingPanel({
       }
       setStops(target.stops || [])
       setRoutePolyline(target.routePolyline || null)
+      setRouteLegs(target.routeLegs || null)
 
       // Update map visually for this day
       if (onPickupChange) onPickupChange(target.pickupLoc || null)
@@ -1361,48 +1370,77 @@ export function BookingPanel({
 
                         {/* Stops for this day */}
                         {day.stops && day.stops.map((stop, sIdx) => (
-                          <div key={sIdx} style={{ display: 'flex', gap: '12px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
-                            <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white', border: '2px solid #8b5cf6', flexShrink: 0, marginTop: '6px', marginLeft: '-1px', zIndex: 1 }} />
-                            <div>
-                              <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Stop {sIdx + 1}</p>
-                              <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{stop.address}</p>
-                              {stop.stopDurationMin > 0 && (
-                                <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Timer style={{ width: '10px', height: '10px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin}m
+                          <React.Fragment key={sIdx}>
+                            {/* Distance & Duration for Leg to this Stop */}
+                            {day.routeLegs && day.routeLegs[sIdx] && (
+                              <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
+                                <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
+                                <div style={{ width: '12px', flexShrink: 0 }} />
+                                <div>
+                                  <div style={{ background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '16px', border: '1px dashed #cbd5e1' }}>
+                                    <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                      <Navigation style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
+                                      {(() => {
+                                        const isMiles = clientGeoContext.distanceUnit === 'mi';
+                                        const dist = Math.round(isMiles ? day.routeLegs[sIdx].distance * 0.000621371 : day.routeLegs[sIdx].distance / 1000);
+                                        return `${dist} ${isMiles ? 'mi' : 'km'}`;
+                                      })()}
+                                    </span>
+                                    <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                      <Timer style={{ width: '13px', height: '13px', color: '#10b981' }} />
+                                      {(() => {
+                                        const dur = Math.ceil(day.routeLegs[sIdx].duration * 1.15);
+                                        const hrs = Math.floor(dur / 3600);
+                                        const mins = Math.floor((dur % 3600) / 60);
+                                        return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                                      })()}
+                                    </span>
+                                  </div>
                                 </div>
-                              )}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '12px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
+                              <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
+                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white', border: '2px solid #8b5cf6', flexShrink: 0, marginTop: '6px', marginLeft: '-1px', zIndex: 1 }} />
+                              <div>
+                                <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Stop {sIdx + 1}</p>
+                                <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{stop.address}</p>
+                                {stop.stopDurationMin > 0 && (
+                                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Timer style={{ width: '10px', height: '10px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin}m
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          </React.Fragment>
                         ))}
 
-                        {/* Distance & Duration for this day */}
-                        {(day.routeDistance || day.routeDuration) && (
+                        {/* Distance & Duration to Drop-off */}
+                        {day.routeLegs && day.routeLegs[day.stops ? day.stops.length : 0] && (
                           <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
                             <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
                             <div style={{ width: '12px', flexShrink: 0 }} />
                             <div>
-                              <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '16px', border: '1px dashed #cbd5e1' }}>
-                                {day.routeDistance && (
-                                  <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                    <Navigation style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
-                                    {(() => {
-                                      const isMiles = clientGeoContext.distanceUnit === 'mi';
-                                      const dist = Math.round(isMiles ? day.routeDistance * 0.000621371 : day.routeDistance / 1000);
-                                      return `${dist} ${isMiles ? 'mi' : 'km'}`;
-                                    })()}
-                                  </span>
-                                )}
-                                {day.routeDuration && (
-                                  <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                    <Timer style={{ width: '13px', height: '13px', color: '#10b981' }} />
-                                    {(() => {
-                                      const hrs = Math.floor(day.routeDuration / 3600);
-                                      const mins = Math.floor((day.routeDuration % 3600) / 60);
-                                      return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-                                    })()}
-                                  </span>
-                                )}
+                              <div style={{ background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '16px', border: '1px dashed #cbd5e1' }}>
+                                <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                  <Navigation style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
+                                  {(() => {
+                                    const isMiles = clientGeoContext.distanceUnit === 'mi';
+                                    const legIdx = day.stops ? day.stops.length : 0;
+                                    const dist = Math.round(isMiles ? day.routeLegs[legIdx].distance * 0.000621371 : day.routeLegs[legIdx].distance / 1000);
+                                    return `${dist} ${isMiles ? 'mi' : 'km'}`;
+                                  })()}
+                                </span>
+                                <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                  <Timer style={{ width: '13px', height: '13px', color: '#10b981' }} />
+                                  {(() => {
+                                    const legIdx = day.stops ? day.stops.length : 0;
+                                    const dur = Math.ceil(day.routeLegs[legIdx].duration * 1.15);
+                                    const hrs = Math.floor(dur / 3600);
+                                    const mins = Math.floor((dur % 3600) / 60);
+                                    return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                                  })()}
+                                </span>
                               </div>
                             </div>
                           </div>
