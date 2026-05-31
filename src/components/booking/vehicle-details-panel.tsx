@@ -40,18 +40,13 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                         <span style={{ fontSize: '12px', fontWeight: 800, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>{v.count}x</span>
                         <p style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>{v.type}</p>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 0' }}>
-                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: 0 }}>{days} Day{days > 1 ? 's' : ''} Itinerary</p>
-                        {v.seats && (
-                           <>
-                             <span style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#cbd5e1' }} />
-                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                               <Users size={11} color="#64748b" />
-                               <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>{v.seats} Pax</span>
-                             </div>
-                           </>
-                        )}
-                      </div>
+                      {v.seats && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', margin: '4px 0 0' }}>
+                          <Users size={12} color="#64748b" />
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748b' }}>{v.seats} Pax</span>
+                        </div>
+                      )}
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: '4px 0 0' }}>{days} Day{days > 1 ? 's' : ''} Itinerary</p>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
