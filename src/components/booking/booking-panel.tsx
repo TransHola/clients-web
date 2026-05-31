@@ -2346,7 +2346,7 @@ export function BookingPanel({
                         <LocationSearchInput
                           key={`pickup-${activeDayIdx}`}
                           hasError={missingFields.includes('pickup')}
-                          disabled={!startDate}
+                          disabled={!startDate || (tripType === 'one-way' ? !startTime : !multiDayStore[activeDayIdx]?.startTime)}
                           placeholder="Start Location"
                           value={pickupValue}
                           showLocateMe
