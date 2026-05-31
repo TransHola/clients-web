@@ -493,7 +493,7 @@ export function BookingPanel({
   const [showReturn, setShowReturn] = React.useState(true)
 
   // ── Multi-Day Logic ────────────────────────────────────────────────────────
-  type DailyData = { dateStr: string; startTime: string; endTime?: string; pickupValue: string; pickupLoc: any; dropoffValue: string; dropoffLoc: any; stops: StopEntry[]; routePolyline?: any; returnValue?: string; returnLoc?: any; pickupWaitMin?: number; dropoffWaitMin?: number }
+  type DailyData = { dateStr: string; startTime: string; endTime?: string; pickupValue: string; pickupLoc: any; dropoffValue: string; dropoffLoc: any; stops: StopEntry[]; routePolyline?: any; returnValue?: string; returnLoc?: any; pickupWaitMin?: number; dropoffWaitMin?: number; routeDistance?: number; routeDuration?: number }
   const [shuttleAutoStops, setShuttleAutoStops] = React.useState<boolean>(false)
 
   const [multiDayStore, setMultiDayStore] = React.useState<DailyData[]>([])
@@ -638,7 +638,7 @@ export function BookingPanel({
 
       nextStore[activeDayIdx] = {
         ...nextStore[activeDayIdx],
-        pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc
+        pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, routeDistance: routeDistance || undefined, routeDuration: routeDuration || undefined
       }
 
       // Auto-propagate dropoff to the next day's pickup
@@ -655,7 +655,7 @@ export function BookingPanel({
       }
       return nextStore
     })
-  }, [pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, activeDayIdx])
+  }, [pickupValue, pickupLoc, dropoffValue, dropoffLoc, stops, startTime, endTime, routePolyline, pickupWaitMin, dropoffWaitMin, returnValue, returnLoc, activeDayIdx, routeDistance, routeDuration])
 
   const handleTabSwitch = (idx: number) => {
     isSwappingRef.current = true
@@ -1312,6 +1312,38 @@ export function BookingPanel({
                             )}
                           </div>
                         </div>
+
+                        {/* Distance & Duration for this day */}
+                        {(day.routeDistance || day.routeDuration) && (
+                          <div style={{ display: 'flex', gap: '16px', position: 'relative', paddingBottom: '16px', marginLeft: '2px' }}>
+                            <div style={{ width: '2px', position: 'absolute', left: '2px', top: '0', bottom: '0', background: '#e2e8f0', zIndex: 0 }} />
+                            <div style={{ width: '12px', flexShrink: 0 }} />
+                            <div>
+                              <div style={{ background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px', display: 'inline-flex', gap: '16px', border: '1px dashed #cbd5e1' }}>
+                                {day.routeDistance && (
+                                  <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                    <Navigation style={{ width: '13px', height: '13px', color: '#8b5cf6' }} />
+                                    {(() => {
+                                      const isMiles = clientGeoContext.distanceUnit === 'mi';
+                                      const dist = Math.round(isMiles ? day.routeDistance * 0.000621371 : day.routeDistance / 1000);
+                                      return `${dist} ${isMiles ? 'mi' : 'km'}`;
+                                    })()}
+                                  </span>
+                                )}
+                                {day.routeDuration && (
+                                  <span style={{ fontSize: '12px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                    <Timer style={{ width: '13px', height: '13px', color: '#10b981' }} />
+                                    {(() => {
+                                      const hrs = Math.floor(day.routeDuration / 3600);
+                                      const mins = Math.floor((day.routeDuration % 3600) / 60);
+                                      return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                                    })()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Drop-off */}
                         <div style={{ display: 'flex', gap: '12px', position: 'relative' }}>
