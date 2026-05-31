@@ -497,7 +497,7 @@ export function BookingPanel({
   const [showReturn, setShowReturn] = React.useState(true)
 
   // ── Multi-Day Logic ────────────────────────────────────────────────────────
-  type DailyData = { dateStr: string; startTime: string; endTime?: string; pickupValue: string; pickupLoc: any; dropoffValue: string; dropoffLoc: any; stops: StopEntry[]; routePolyline?: any; returnValue?: string; returnLoc?: any; pickupWaitMin?: number; dropoffWaitMin?: number; routeDistance?: number; routeDuration?: number }
+  type DailyData = { dateStr: string; startTime: string; endTime?: string; pickupValue: string; pickupLoc: any; dropoffValue: string; dropoffLoc: any; stops: StopEntry[]; routePolyline?: any; returnValue?: string; returnLoc?: any; pickupWaitMin?: number; dropoffWaitMin?: number; routeDistance?: number; routeDuration?: number; routeLegs?: any[] }
   const [shuttleAutoStops, setShuttleAutoStops] = React.useState<boolean>(false)
 
   const [multiDayStore, setMultiDayStore] = React.useState<DailyData[]>([])
