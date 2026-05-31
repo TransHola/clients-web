@@ -2337,7 +2337,26 @@ export function BookingPanel({
                   </div>
                 )}
 
-                <div className="loc-card">
+                {(() => {
+                  const isLocationLocked = !startDate || (tripType === 'one-way' ? !startTime : !multiDayStore[activeDayIdx]?.startTime);
+                  return (
+                    <div className="loc-card" style={{ opacity: isLocationLocked ? 0.6 : 1, transition: 'opacity 0.2s', pointerEvents: isLocationLocked ? 'none' : 'auto' }}>
+                      {isLocationLocked && (
+                        <div style={{
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(1px)', borderRadius: '20px'
+                        }}>
+                          <div style={{
+                            background: '#1e293b', color: 'white', padding: '8px 16px', borderRadius: '20px',
+                            fontSize: '12px', fontWeight: 700, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            display: 'flex', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.3s ease'
+                          }}>
+                            <span style={{ fontSize: '14px' }}>🔒</span>
+                            Please select Date & Time first
+                          </div>
+                        </div>
+                      )}
                   {/* ── PICKUP ROW ── */}
                   <div style={{ padding: '6px 0 0' }}>
                     <div className="loc-row" style={{ borderBottom: missingFields.includes('pickup') ? '1.5px solid #ef4444' : undefined }}>
@@ -2678,6 +2697,8 @@ export function BookingPanel({
 
                   {/* ── DROPOFF ENDS HERE ── */}
                 </div>
+              );
+            })()}
 
                 {/* ── Pin drag indicators ── */}
                 {pickupPinMoved && (
