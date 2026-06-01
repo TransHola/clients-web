@@ -7,6 +7,10 @@ import {
 import { createPortal } from "react-dom"
 import { ReceiptModal } from "./receipt-modal"
 import { CancellationModal } from "./cancellation-modal"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import { OptimizationSolver, OptimizationResult } from "@/lib/rate-engine/optimization-solver"
 import { loadStripe } from '@stripe/stripe-js';
@@ -107,6 +111,18 @@ function useCountdown(expiresAt: Date) {
 export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers = 1, routeDistanceKm = 40, tripType = "one-way", pickupLabel = "Pickup", dropoffLabel = "Dropoff", bookingDetails, expirationHours = 18 }: {
   onBack: () => void; onSelect: (id?: string) => void; onSelectionChange?: (option: any | null) => void; passengers?: number; routeDistanceKm?: number; tripType?: string; pickupLabel?: string; dropoffLabel?: string; bookingDetails?: any; expirationHours?: number;
 }) {
+    const [user, setUser] = React.useState<any>(null);
+  const [showAuthDialog, setShowAuthDialog] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState<"book" | "quote" | null>(null);
+
+  React.useEffect(() => {
+    async function checkAuth() {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    }
+    checkAuth();
+  }, []);
   const [options, setOptions] = React.useState<VehicleOption[]>([]);
   const [currency, setCurrency] = React.useState<string>("USD");
   const [currencySymbol, setCurrencySymbol] = React.useState<string>("");
@@ -611,11 +627,25 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                 <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Trip starts too soon to save quote. Book now.</p>
               )}
             </div>
-            <button onClick={() => setStep("payment")} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => {
+              if (!user) {
+                setPendingAction("book");
+                setShowAuthDialog(true);
+              } else {
+                setStep("payment");
+              }
+            }} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currencySymbol || currency} {selected.price}
             </button>
             {canSaveAsQuote && (
-              <button onClick={handleSaveQuote} disabled={isSavingQuote || savedAsQuote} style={{ width: '100%', height: '44px', borderRadius: '14px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+              <button onClick={() => {
+                if (!user) {
+                  setPendingAction("quote");
+                  setShowAuthDialog(true);
+                } else {
+                  handleSaveQuote();
+                }
+              }} disabled={isSavingQuote || savedAsQuote} style={{ width: '100%', height: '44px', borderRadius: '14px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
                 {isSavingQuote ? (
                   <RefreshCw className="animate-spin" style={{ width: '14px', height: '14px', color: '#64748b' }} />
                 ) : (
@@ -626,6 +656,22 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
             )}
           </div>
         </FooterPortal>
+      )}
+
+      {showAuthDialog && (
+        <QuotationAuthDialog 
+          isOpen={showAuthDialog} 
+          onClose={() => { setShowAuthDialog(false); setPendingAction(null); }} 
+          onSuccess={async () => {
+            const supabase = createClient();
+            const { data } = await supabase.auth.getUser();
+            setUser(data.user);
+            setShowAuthDialog(false);
+            if (pendingAction === "book") setStep("payment");
+            if (pendingAction === "quote") handleSaveQuote();
+            setPendingAction(null);
+          }} 
+        />
       )}
     </div>
   )
@@ -1431,4 +1477,103 @@ function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "AED"
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} bookingDetails={{ ...bookingDetails, option, ref }} />
     </div>
   )
+}
+
+export function QuotationAuthDialog({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) {
+  const [isLogin, setIsLogin] = React.useState(true);
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const supabase = createClient();
+    
+    if (isLogin) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setError(error.message);
+      } else {
+        onSuccess();
+      }
+    } else {
+      const { data, error } = await supabase.auth.signUp({
+        email, password,
+        options: {
+          data: { first_name: firstName, last_name: lastName, is_company: false }
+        }
+      });
+      if (error) {
+        setError(error.message);
+      } else {
+        if (data.user) {
+          await supabase.from('profiles').insert({
+            id: data.user.id,
+            email,
+            full_name: `${firstName} ${lastName}`.trim(),
+            first_name: firstName || null,
+            last_name: lastName || null,
+            role: 'client',
+            status: 'Active',
+            preferences: { clientType: 'Individual' }
+          });
+        }
+        onSuccess();
+      }
+    }
+    setLoading(false);
+  };
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md rounded-2xl p-6">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">{isLogin ? 'Login to continue' : 'Create an account'}</DialogTitle>
+          <DialogDescription>
+            {isLogin ? 'Enter your email and password to proceed with your booking.' : 'Sign up to manage your bookings and quotations.'}
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {!isLogin && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required />
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          </div>
+          
+          {error && <div className="text-sm text-red-500 font-medium">{error}</div>}
+          
+          <Button type="submit" className="w-full h-11 text-white bg-slate-900 rounded-xl hover:bg-slate-800" disabled={loading}>
+            {loading ? 'Please wait...' : isLogin ? 'Login' : 'Create Account'}
+          </Button>
+          
+          <div className="text-center mt-2">
+            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-blue-600 hover:underline bg-transparent border-none cursor-pointer">
+              {isLogin ? "Don't have an account? Sign up" : "Already have an account? Login"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
