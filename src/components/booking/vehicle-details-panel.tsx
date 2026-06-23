@@ -139,12 +139,12 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569', marginBottom: '8px' }}>
             <span>Subtotal (Vehicles)</span>
-            <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {option.vehicles ? option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0).toFixed(2) : parseFloat(option.price).toFixed(2)}</span>
+            <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {(option.price - (option.taxAmount || 0)).toFixed(2)}</span>
           </div>
-          {option.price > (option.vehicles ? option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0) : option.price) && (
+          {(option.taxAmount || 0) > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569', marginBottom: '8px' }}>
               <span>Taxes & Fees</span>
-              <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {(option.price - option.vehicles.reduce((sum: number, v: any) => sum + ((v.price || 0) * v.count), 0)).toFixed(2)}</span>
+              <span style={{ fontWeight: 600 }}>{option.currencySymbol || option.currency || '$'} {(option.taxAmount || 0).toFixed(2)}</span>
             </div>
           )}
           <div style={{ borderTop: '1px dashed #cbd5e1', margin: '12px 0' }} />

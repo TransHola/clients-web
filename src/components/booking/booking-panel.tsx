@@ -495,6 +495,17 @@ export function BookingPanel({
   const [manualShuttleInterval, setManualShuttleInterval] = React.useState<number | null>(null)
 
   const [showReturn, setShowReturn] = React.useState(true)
+  const [hasSelectedTripType, setHasSelectedTripType] = React.useState(false)
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("saved_itinerary")
+      const urlParams = new URLSearchParams(window.location.search);
+      if (saved || urlParams.get("quote")) {
+        setHasSelectedTripType(true)
+      }
+    }
+  }, []);
 
   // ── Multi-Day Logic ────────────────────────────────────────────────────────
   type DailyData = { dateStr: string; startTime: string; endTime?: string; pickupValue: string; pickupLoc: any; dropoffValue: string; dropoffLoc: any; stops: StopEntry[]; routePolyline?: any; returnValue?: string; returnLoc?: any; pickupWaitMin?: number; dropoffWaitMin?: number; routeDistance?: number; routeDuration?: number; routeLegs?: any[] }
@@ -778,11 +789,13 @@ export function BookingPanel({
       if (multiDayStore.length === 0) return false;
       for (const day of multiDayStore) {
          if (!day.pickupLoc || !day.dropoffLoc) return false;
+         if (day.pickupLoc.address === day.dropoffLoc.address) return false;
          if (serviceMode === 'scheduled' && (!day.dateStr || !day.startTime)) return false;
       }
     } else {
       const hasLocations = !!pickupLoc && !!dropoffLoc;
       if (!hasLocations) return false;
+      if (tripType === 'one-way' && pickupLoc.address === dropoffLoc.address) return false;
       if (serviceMode === "scheduled") {
         if (!startDate || !startTime) return false;
         if (tripType === 'shuttle') {
@@ -804,6 +817,9 @@ export function BookingPanel({
        if (activeDay) {
           if (!activeDay.pickupLoc) missing.push("pickup")
           if (!activeDay.dropoffLoc) missing.push("dropoff")
+          if (activeDay.pickupLoc && activeDay.dropoffLoc && activeDay.pickupLoc.address === activeDay.dropoffLoc.address) {
+             missing.push("same-location")
+          }
           if (serviceMode === 'scheduled') {
              if (!activeDay.dateStr) missing.push("date")
              if (!activeDay.startTime) missing.push("start time")
@@ -812,6 +828,9 @@ export function BookingPanel({
     } else {
       if (!pickupLoc) missing.push("pickup")
       if (!dropoffLoc) missing.push("dropoff")
+      if (tripType === 'one-way' && pickupLoc && dropoffLoc && pickupLoc.address === dropoffLoc.address) {
+         missing.push("same-location")
+      }
       if (serviceMode === "scheduled" && !startDate) missing.push("date")
       if (serviceMode === "scheduled" && !startTime) missing.push("start time")
       if (serviceMode === "scheduled" && tripType === 'shuttle' && !endTime) missing.push("finish time")
@@ -1331,7 +1350,7 @@ export function BookingPanel({
                   PRICING READY
                 </p>
                 <h2 style={{ fontSize: '20px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', color: '#0f172a' }}>
-                  {tripType === 'one-way' && 'One Way Journey'}
+                  {tripType === 'one-way' && (multiDayStore.length > 1 ? 'Multiple transfers' : 'One Way transfer')}
                   {tripType === 'roundtrip' && `Round Trip ${roundTripMode === 'continuous' ? 'Continuous' : 'Transfer'}`}
                   {tripType === 'shuttle' && 'Shuttle Service'}
                   {tripType === 'multi-day' && 'Multi-Day Itinerary'}
@@ -1746,6 +1765,7 @@ export function BookingPanel({
                       setRoutePolyline(null);
                       setShowReturn(false);
                       setIsShuttle(false);
+                      setHasSelectedTripType(false);
                       localStorage.removeItem("saved_itinerary");
                       window.history.replaceState(null, '', window.location.pathname);
                     }} style={{ padding: '8px 14px', borderRadius: '10px', background: '#eff6ff', border: '1.5px solid #2563eb', color: '#1d4ed8', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
@@ -1763,27 +1783,36 @@ export function BookingPanel({
                 </>
               )}
 
-              {/* ── ASAP / Scheduled toggle ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '22px', background: '#f1f5f9', borderRadius: '14px', padding: '4px' }}>
-                {(['scheduled', 'asap'] as const).map((mode) => (
-                  <button key={mode} onClick={() => setServiceMode(mode)} style={{
-                    height: '48px', borderRadius: '11px', border: 'none', cursor: 'pointer',
-                    background: serviceMode === mode ? 'white' : 'transparent',
-                    boxShadow: serviceMode === mode ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    fontWeight: 700, fontSize: '13px',
-                    color: serviceMode === mode ? '#0f172a' : '#64748b', transition: 'all 0.15s',
-                  }}>
-                    {mode === 'scheduled'
-                      ? <><CalendarDays style={{ width: '15px', height: '15px', color: serviceMode === 'scheduled' ? '#2563eb' : '#94a3b8' }} /> Scheduled Planner</>
-                      : <><Zap style={{ width: '15px', height: '15px', color: serviceMode === 'asap' ? '#f59e0b' : '#94a3b8' }} /> ASAP / Now</>
-                    }
-                  </button>
-                ))}
-              </div>
-
               {/* ── Trip Type Toggle (One Way / Round Trip / Shuttle) ── */}
-              {tripType !== 'multi-day' ? (
+              {!hasSelectedTripType && !editingQuoteRef ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '24px' }}>
+                  <button onClick={() => { setShowReturn(false); setIsShuttle(false); setHasSelectedTripType(true); }} style={{ padding: '24px', borderRadius: '20px', background: 'white', border: '2px solid #e2e8f0', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb', fontSize: '24px', flexShrink: 0 }}>⇀</div>
+                    <div>
+                      <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>One Way Transfer</h3>
+                      <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: 500 }}>Point A to Point B direct transfer.</p>
+                    </div>
+                  </button>
+
+                  <button onClick={() => { setShowReturn(true); setIsShuttle(false); setRoundTripMode('continuous'); setHasSelectedTripType(true); }} style={{ padding: '24px', borderRadius: '20px', background: 'white', border: '2px solid #e2e8f0', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c3aed', fontSize: '24px', flexShrink: 0 }}>⇄</div>
+                    <div>
+                      <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>Round Trip & Itinerary</h3>
+                      <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: 500 }}>Return trips, hourly, or multi-day travel.</p>
+                    </div>
+                  </button>
+
+                  <button onClick={() => { setShowReturn(false); setIsShuttle(true); setHasSelectedTripType(true); }} style={{ padding: '24px', borderRadius: '20px', background: 'white', border: '2px solid #e2e8f0', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669', fontSize: '24px', flexShrink: 0 }}>↺</div>
+                    <div>
+                      <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>Shuttle Service</h3>
+                      <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: 500 }}>Continuous loop between multiple stops.</p>
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  {tripType !== 'multi-day' ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
                   {/* One Way */}
                   <button
@@ -1811,6 +1840,7 @@ export function BookingPanel({
                     onClick={() => {
                       setShowReturn(true)
                       setIsShuttle(false)
+                      setRoundTripMode('continuous')
                     }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
@@ -1844,49 +1874,13 @@ export function BookingPanel({
                     <span>↺</span> Shuttle
                   </button>
 
-                  {/* Sub-toggles for Round Trip */}
-                  {showReturn && !isShuttle && (
-                    <div style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '4px', animation: 'fadeInDown 0.2s ease-out' }}>
-                      <button
-                        onClick={() => setRoundTripMode('continuous')}
-                        style={{
-                          flex: 1, padding: '8px 12px', borderRadius: '12px',
-                          background: roundTripMode === 'continuous' ? '#eff6ff' : 'white',
-                          border: `1.5px solid ${roundTripMode === 'continuous' ? '#3b82f6' : '#e2e8f0'}`,
-                          color: roundTripMode === 'continuous' ? '#1e40af' : '#64748b',
-                          fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
-                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '14px' }}>∞</span> Continuous
-                        </div>
-                        <span style={{ fontSize: '9px', fontWeight: 500, color: roundTripMode === 'continuous' ? '#3b82f6' : '#94a3b8' }}>Vehicle stays with you</span>
-                      </button>
-                      <button
-                        onClick={() => setRoundTripMode('transfer')}
-                        style={{
-                          flex: 1, padding: '8px 12px', borderRadius: '12px',
-                          background: roundTripMode === 'transfer' ? '#eff6ff' : 'white',
-                          border: `1.5px solid ${roundTripMode === 'transfer' ? '#3b82f6' : '#e2e8f0'}`,
-                          color: roundTripMode === 'transfer' ? '#1e40af' : '#64748b',
-                          fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
-                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '14px' }}>A→B</span> Transfer
-                        </div>
-                        <span style={{ fontSize: '9px', fontWeight: 500, color: roundTripMode === 'transfer' ? '#3b82f6' : '#94a3b8' }}>Point-to-point drops</span>
-                      </button>
-                    </div>
-                  )}
+                  {/* Removed Sub-toggles for Round Trip */}
                 </div>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '12px 16px', background: '#eff6ff', borderRadius: '14px', border: '1.5px dashed #bfdbfe', animation: 'fadeIn 0.2s ease' }}>
                   <div>
-                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: '#1e40af' }}>Multi-Day Itinerary</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>Multiple dates selected</p>
+                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: '#1e40af' }}>{!showReturn && !isShuttle ? 'Multi-Transfer Itinerary' : 'Multi-Day Itinerary'}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>{!showReturn && !isShuttle ? 'Multiple transfers selected' : 'Multiple dates selected'}</p>
                   </div>
                   <button
                     onClick={() => {
@@ -1896,6 +1890,7 @@ export function BookingPanel({
                       setIsShuttle(false);
                       setEndDate('');
                       setEndTime('');
+                      setHasSelectedTripType(false);
                     }}
                     style={{
                       background: 'white', border: '1.5px solid #bfdbfe', borderRadius: '8px', padding: '6px 12px',
@@ -1982,7 +1977,7 @@ export function BookingPanel({
                     </div>
                     <div>
                       <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '5px' }}>
-                        {tripType === 'one-way' ? 'Start Date' : 'Dates (Select all that apply)'}
+                        {(!showReturn && !isShuttle) ? 'Start Date' : 'Dates (Select all that apply)'}
                       </label>
                       <Popover>
                         <PopoverTrigger
@@ -1996,20 +1991,19 @@ export function BookingPanel({
                         >
                           <CalendarDays style={{ width: '16px', height: '16px', marginRight: '8px', color: startDate ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {tripType === 'one-way'
-                              ? (startDate ? format(parseISO(startDate), 'PPP') : <span>Pick a date</span>)
+                            {(!showReturn && !isShuttle)
+                              ? ((multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? format(parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate), 'PPP') : <span>Pick a date</span>)
                               : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'PPP') : multiDayStore.length > 1 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
                           </span>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 99999 }}>
-                          {tripType === 'one-way' ? (
+                          {(!showReturn && !isShuttle) ? (
                             <Calendar
                               mode="single"
-                              selected={startDate ? parseISO(startDate) : undefined}
+                              selected={(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) : undefined}
                               onSelect={(date) => {
                                 if (!date) return;
                                 const newDate = format(date, 'yyyy-MM-dd');
-                                setStartDate(newDate)
 
                                 let finalTime = startTime;
                                 if (newDate === today) {
@@ -2021,18 +2015,19 @@ export function BookingPanel({
                                   setPickupArrivalTime(finalTime);
                                 }
 
-                                setEndDate(newDate);
-                                setMultiDayStore([{
-                                  dateStr: newDate,
-                                  startTime: finalTime || '09:00',
-                                  endTime: endTime || '',
-                                  pickupValue,
-                                  pickupLoc,
-                                  dropoffValue,
-                                  dropoffLoc,
-                                  stops,
-                                  routePolyline
-                                }]);
+                                if (multiDayStore.length > 0) {
+                                  setMultiDayStore(prev => prev.map((item, idx) => {
+                                    if (idx === activeDayIdx) {
+                                      return { ...item, dateStr: newDate, startTime: newDate === today ? finalTime : item.startTime };
+                                    }
+                                    return item;
+                                  }));
+                                  if (activeDayIdx === 0) setStartDate(newDate);
+                                  if (activeDayIdx === multiDayStore.length - 1) setEndDate(newDate);
+                                } else {
+                                  setStartDate(newDate);
+                                  setEndDate(newDate);
+                                }
                               }}
                               disabled={(date) => {
                                 const todayDate = new Date();
@@ -2143,13 +2138,13 @@ export function BookingPanel({
                   )}
 
                   {/* Daily Tabs Row */}
-                  {(multiDayStore.length > 1 || (showReturn && !isShuttle && startDate)) && (
+                  {(multiDayStore.length > 1 || (!isShuttle && startDate)) && (
                     <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <p style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', margin: 0 }}>
-                          {showReturn && !isShuttle && roundTripMode === 'transfer' ? `Transfers (${Math.max(1, multiDayStore.length)})` : `Itinerary Days (${Math.max(1, multiDayStore.length)})`}
+                          {(!showReturn && !isShuttle) ? `Transfers (${Math.max(1, multiDayStore.length)})` : `Itinerary Days (${Math.max(1, multiDayStore.length)})`}
                         </p>
-                        {showReturn && !isShuttle && (
+                        {!isShuttle && (
                           <button
                             disabled={!startDate}
                             onClick={() => {
@@ -2159,12 +2154,12 @@ export function BookingPanel({
                                 let nextDateStr = startDate;
                                 if (currentLast?.dateStr) {
                                   const d = new Date(`${currentLast.dateStr}T12:00:00`);
-                                  d.setDate(d.getDate() + 1);
+                                  d.setDate(d.getDate() + (!showReturn && !isShuttle ? 0 : 1));
                                   nextDateStr = d.toISOString().split('T')[0];
                                 }
 
                                 setTimeout(() => {
-                                  if (nextDateStr) setEndDate(nextDateStr);
+                                  if (nextDateStr && showReturn) setEndDate(nextDateStr);
                                 }, 0);
 
                                 if (newStore.length === 0) {
@@ -2183,10 +2178,10 @@ export function BookingPanel({
                                 const last = newStore[newStore.length - 1];
                                 newStore.push({
                                   dateStr: nextDateStr,
-                                  startTime: last?.startTime || '09:00',
+                                  startTime: (!showReturn && !isShuttle) ? '' : (last?.startTime || '09:00'),
                                   endTime: '',
-                                  pickupValue: returnValue || last?.dropoffValue || '',
-                                  pickupLoc: returnLoc || last?.dropoffLoc || null,
+                                  pickupValue: (!showReturn && !isShuttle) ? (last?.dropoffValue || '') : (returnValue || last?.dropoffValue || ''),
+                                  pickupLoc: (!showReturn && !isShuttle) ? (last?.dropoffLoc || null) : (returnLoc || last?.dropoffLoc || null),
                                   dropoffValue: '',
                                   dropoffLoc: null,
                                   stops: [],
@@ -2198,7 +2193,7 @@ export function BookingPanel({
                             }}
                             style={{ fontSize: '11px', fontWeight: 700, color: !startDate ? '#94a3b8' : '#3b82f6', background: !startDate ? '#f1f5f9' : '#eff6ff', borderRadius: '6px', padding: '4px 8px', border: `1px solid ${!startDate ? '#e2e8f0' : '#bfdbfe'}`, cursor: !startDate ? 'not-allowed' : 'pointer' }}
                           >
-                            + Add {roundTripMode === 'transfer' ? 'Transfer' : 'Day'}
+                            + Add {(!showReturn && !isShuttle) || roundTripMode === 'transfer' ? 'Transfer' : 'Day'}
                           </button>
                         )}
                       </div>
@@ -2209,13 +2204,13 @@ export function BookingPanel({
                           </button>
                         )}
                         <div ref={tabsContainerRef} style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', paddingLeft: multiDayStore.length > 3 ? '16px' : '0', paddingRight: multiDayStore.length > 3 ? '16px' : '0', scrollbarWidth: 'none', flex: 1, width: '100%', WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
-                          {showReturn && !isShuttle && multiDayStore.length === 0 ? (
+                          {!isShuttle && multiDayStore.length === 0 ? (
                             <button onClick={() => handleTabSwitch(0)} style={{
                               padding: '8px 14px', borderRadius: '10px', cursor: 'pointer', whiteSpace: 'nowrap',
                               border: '1.5px solid #2563eb', background: '#eff6ff', color: '#1d4ed8',
                               fontWeight: 800, fontSize: '12px', transition: 'all 0.2s', flexShrink: 0
                             }}>
-                              {roundTripMode === 'transfer' ? 'Transfer 1' : 'Day 1'} <span style={{ fontWeight: 500, opacity: 0.8 }}>· {startDate ? format(parseISO(startDate), 'MMM d') : ''}</span>
+                              {(!showReturn && !isShuttle) || roundTripMode === 'transfer' ? 'Transfer 1' : 'Day 1'} <span style={{ fontWeight: 500, opacity: 0.8 }}>· {startDate ? format(parseISO(startDate), 'MMM d') : ''}</span>
                             </button>
                           ) : multiDayStore.map((day, idx) => {
                             const isActive = activeDayIdx === idx;
@@ -2231,7 +2226,7 @@ export function BookingPanel({
                                   fontWeight: 800, fontSize: '12px', transition: 'all 0.2s', flexShrink: 0,
                                   paddingRight: multiDayStore.length > 1 ? '32px' : '14px'
                                 }}>
-                                  {showReturn && !isShuttle && roundTripMode === 'transfer' ? `Transfer ${idx + 1}` : `Day ${idx + 1}`} <span style={{ fontWeight: 500, opacity: 0.8 }}>{formattedDate ? `· ${formattedDate}` : ''}</span>
+                                  {(!showReturn && !isShuttle) || (showReturn && !isShuttle && roundTripMode === 'transfer') ? `Transfer ${idx + 1}` : `Day ${idx + 1}`} <span style={{ fontWeight: 500, opacity: 0.8 }}>{formattedDate ? `· ${formattedDate}` : ''}</span>
                                 </button>
                                 {multiDayStore.length > 1 && (
                                   <button
@@ -2644,9 +2639,9 @@ export function BookingPanel({
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <LocationSearchInput
                         key={`dropoff-${activeDayIdx}`}
-                        hasError={missingFields.includes('dropoff')}
+                        hasError={missingFields.includes('dropoff') || missingFields.includes('same-location')}
                         disabled={!pickupLoc}
-                        placeholder="End Location"
+                        placeholder="Final Destination"
                         value={dropoffValue}
                         bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
                         onSelect={(loc) => {
@@ -2656,6 +2651,11 @@ export function BookingPanel({
                           if (onDropoffChange) onDropoffChange(loc);
                         }}
                       />
+                      {missingFields.includes('same-location') && (
+                        <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 600, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>⚠️</span> Start and Final Destination cannot be the same.
+                        </div>
+                      )}
                     </div>
 
                     {/* Destination Wait Time Controls inline */}
@@ -2715,14 +2715,23 @@ export function BookingPanel({
                     const hasWait = tripType !== 'one-way' && dropoffWaitMin > 0;
                     return (
                       <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                          {legInfo.eta && (
-                            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Flag size={12} color="#16a34a" /> Arrive {formatEtaStr(legInfo.eta)}
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {legInfo.eta && (
+                              <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', background: '#f0fdf4', padding: '4px 10px', borderRadius: '6px', border: '1px solid #dcfce7' }}>
+                                <Flag size={14} color="#16a34a" /> Arrive {formatEtaStr(legInfo.eta)}
+                              </span>
+                            )}
+                            {routeDistance !== null && routeDuration !== null && (
+                              <span style={{ fontSize: '11px', color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', padding: '4px 10px', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
+                                <Navigation style={{ width: '12px', height: '12px', color: '#8b5cf6' }} /> {formatDistance(routeDistance, clientGeoContext.distanceUnit)} 
+                                <span style={{ color: '#cbd5e1', margin: '0 2px' }}>|</span> 
+                                <Timer style={{ width: '12px', height: '12px', color: '#10b981' }} /> {formatDuration(routeDuration)} total
+                              </span>
+                            )}
+                          </div>
                           {(endTime || legInfo.eta) && (
-                            <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
+                            <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600, marginTop: '2px' }}>
                               Finish at {endTime ? formatEtaStr({ date: endDate || startDate, time: endTime }) : formatEtaStr(legInfo.eta)}
                             </span>
                           )}
@@ -2736,6 +2745,7 @@ export function BookingPanel({
 
 
                   {/* ── DROPOFF ENDS HERE ── */}
+
                 </div>
               );
             })()}
@@ -3544,7 +3554,8 @@ export function BookingPanel({
                 </div>,
                 document.body
               )}
-
+                </div>
+              )}
             </>
           )}
 

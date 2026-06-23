@@ -478,7 +478,7 @@ function RoutingMachine({
       },
       createMarker: (() => null) as any,
       router: L.Routing.osrmv1({
-        serviceUrl: process.env.NEXT_PUBLIC_OSRM_URL || "https://router.project-osrm.org/route/v1",
+        serviceUrl: (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") + "/api/gis/osrm/route/v1",
         profile: "driving",
       }),
       show: false,
