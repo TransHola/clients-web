@@ -244,11 +244,14 @@ function MapController({
   dropoff,
   stops,
   userLocation,
+  isVehicleDetailsOpen,
+  pinsLocked,
 }: {
   pickup?: PinLocation | null
   dropoff?: PinLocation | null
   stops?: StopLocation[]
   userLocation?: { lat: number; lon: number } | null
+  isVehicleDetailsOpen?: boolean
 }) {
   const map = useMap()
 
@@ -275,7 +278,11 @@ function MapController({
         if (all.length >= 2) {
           const bounds = L.latLngBounds(all)
           if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15, animate, duration: animate ? 1.2 : 0 })
+            const isMobile = window.innerWidth < 768;
+            const leftOffset = isMobile ? 0 : (pinsLocked ? 0 : 650);
+            const pt = [leftOffset + 40, 60] as [number, number];
+            const pb = [40, 60] as [number, number];
+            map.fitBounds(bounds, { paddingTopLeft: pt, paddingBottomRight: pb, maxZoom: 15, animate, duration: animate ? 1.2 : 0 })
           }
         } else if (all.length === 1) {
           if (animate) map.flyTo(all[0], 15, { duration: 1.0 })
@@ -303,7 +310,7 @@ function MapController({
     }
 
     return () => resizeObserver.disconnect()
-  }, [pickup, dropoff, stops, userLocation, map])
+  }, [pickup, dropoff, stops, userLocation, map, pinsLocked, isVehicleDetailsOpen])
 
   return null
 }
@@ -478,7 +485,7 @@ function RoutingMachine({
       },
       createMarker: (() => null) as any,
       router: L.Routing.osrmv1({
-        serviceUrl: (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") + "/api/gis/osrm/route/v1",
+        serviceUrl: (process.env.NEXT_PUBLIC_GIS_API_URL || "http://localhost:4000") + "/api/v1/gis/osrm/route/v1",
         profile: "driving",
       }),
       show: false,
@@ -584,6 +591,7 @@ export function LiveMap({
   isStaticPreview = false,
   countryCode,
   distanceUnit = 'km',
+  isVehicleDetailsOpen,
 }: {
   pickup?: any
   dropoff?: any
@@ -595,6 +603,7 @@ export function LiveMap({
   userLocation?: { lat: number; lon: number } | null
   onPickupMoved?: (loc: PinLocation) => void
   onDropoffMoved?: (loc: PinLocation) => void
+  isVehicleDetailsOpen?: boolean
   onStopMoved?: (id: string, loc: PinLocation) => void
   onRestoreRoute?: (pickup: PinLocation, dropoff: PinLocation, stops: StopLocation[]) => void
   pinsLocked?: boolean
@@ -763,7 +772,7 @@ export function LiveMap({
         />
 
         {/* Auto-zoom */}
-        <MapController pickup={pickup} dropoff={dropoff} stops={stops} userLocation={userLocation} />
+        <MapController pickup={pickup} dropoff={dropoff} stops={stops} userLocation={userLocation} isVehicleDetailsOpen={isVehicleDetailsOpen} pinsLocked={pinsLocked} />
 
         {/* Start pin */}
         {isValidCoord(pickup?.coordinate) && (

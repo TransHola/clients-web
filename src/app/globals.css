@@ -171,3 +171,57 @@
   from { transform: translateX(30px); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
+/* State of the Art UI Overrides */
+.custom-scrollbar * {
+  /* Force clean borders */
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+.custom-scrollbar [style*="background: 'white'"],
+.custom-scrollbar [style*="background: white"],
+.custom-scrollbar [style*="background: #ffffff"] {
+  background: transparent !important;
+}
+
+.custom-scrollbar [style*="background: '#f8fafc'"],
+.custom-scrollbar [style*="background: #f8fafc"],
+.custom-scrollbar [style*="background: '#f1f5f9'"] {
+  background: rgba(0,0,0,0.02) !important;
+}
+
+.dark .custom-scrollbar [style*="background: '#f8fafc'"],
+.dark .custom-scrollbar [style*="background: #f8fafc"],
+.dark .custom-scrollbar [style*="background: '#f1f5f9'"] {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+.dark .custom-scrollbar,
+.dark .custom-scrollbar * {
+  color: #f8fafc;
+}
+
+.dark .custom-scrollbar [style*="color: '#0f172a'"],
+.dark .custom-scrollbar [style*="color: '#1e293b'"],
+.dark .custom-scrollbar [style*="color: '#334155'"],
+.dark .custom-scrollbar [style*="color: #0f172a"] {
+  color: #f8fafc !important;
+}
+
+.dark .custom-scrollbar [style*="color: '#475569'"],
+.dark .custom-scrollbar [style*="color: '#64748b'"] {
+  color: #94a3b8 !important;
+}
+
+.dark .custom-scrollbar [style*="boxShadow"],
+.dark .custom-scrollbar [style*="box-shadow"] {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+
+/* Hide scrollbar completely but allow scrolling */
+.custom-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.custom-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

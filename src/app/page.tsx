@@ -81,38 +81,28 @@ export default function Home() {
   }
 
   return (
-    <div style={{
-      height: '100%',
-      display: 'grid',
-      gridTemplateRows: 'auto 1fr',
-      overflow: 'hidden',
-      background: '#f1f5f9',
-    }}>
-      <ClientHeader />
+    <div className="relative h-screen w-full flex flex-col overflow-hidden bg-white dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-50">
+      
+      {/* 1. HEADER */}
+      <div className="flex-none z-50 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+        <ClientHeader />
+      </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: selectedQuote 
-          ? (bookingStep === 'quotation' ? '1040px 1fr 380px' : '600px 1fr 380px') 
-          : (bookingStep === 'quotation' ? '1040px 1fr' : '600px 1fr'),
-        gap: '12px',
-        padding: '12px',
-        minHeight: 0,
-        overflow: 'hidden',
-        transition: 'grid-template-columns 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)',
-      }}>
-        {/* LEFT — Booking Panel */}
-        <div style={{
-          background: 'white',
-          borderRadius: '18px',
-          boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
-          overflow: 'hidden',
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 50,
-        }}>
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
+      {/* 2. MAIN SPLIT CONTENT */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative p-3 md:p-4 gap-3 md:gap-4 bg-slate-50 dark:bg-slate-900">
+        
+        {/* LEFT BLOCK — Booking Panel */}
+        <div 
+          className={`flex-none h-[60%] md:h-full flex flex-col bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl md:rounded-3xl z-20 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden ${
+            bookingStep === 'quotation' ? 'md:flex-[1.5]' : 'md:flex-none'
+          }`}
+          style={{ 
+            width: typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : (bookingStep === 'quotation' ? 'auto' : '550px'),
+            minWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '700px' : 'auto',
+            maxWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '900px' : '100%',
+          }}
+        >
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 custom-scrollbar">
             <BookingPanel
               onPickupChange={handlePickupChange}
               onDropoffChange={handleDropoffChange}
@@ -134,40 +124,33 @@ export default function Home() {
           </div>
         </div>
 
-        {/* RIGHT — Live Map */}
-        <div style={{
-          borderRadius: '18px',
-          overflow: 'hidden',
-          position: 'relative',
-          minHeight: 0,
-          boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
-        }}>
-          <LiveMapWrapper
-            pickup={pickup}
-            dropoff={dropoff}
-            returnLoc={returnLoc}
-            stops={stops}
-            tripType={tripType}
-            shuttleVehicles={shuttleVehicles}
-            multiDayStore={multiDayStore}
-            userLocation={userLocation}
-            countryCode={countryCode}
-            distanceUnit={distanceUnit}
-            onPickupMoved={handlePickupMoved}
-            onDropoffMoved={handleDropoffMoved}
-            onStopMoved={handleStopMoved}
-            onRestoreRoute={handleRestoreRoute}
-            pinsLocked={bookingStep === "quotation"}
-          />
+        {/* MIDDLE BLOCK — Map Layer */}
+        <div className="flex-1 relative bg-slate-100 dark:bg-slate-800 z-10 flex flex-col overflow-hidden h-[40%] md:h-full rounded-2xl md:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm" style={{ minWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && selectedQuote ? '200px' : '300px' }}>
+          <div className="absolute inset-0">
+            <LiveMapWrapper
+              pickup={pickup}
+              dropoff={dropoff}
+              returnLoc={returnLoc}
+              stops={stops}
+              tripType={tripType}
+              shuttleVehicles={shuttleVehicles}
+              multiDayStore={multiDayStore}
+              userLocation={userLocation}
+              countryCode={countryCode}
+              distanceUnit={distanceUnit}
+              onPickupMoved={handlePickupMoved}
+              onDropoffMoved={handleDropoffMoved}
+              onStopMoved={handleStopMoved}
+              onRestoreRoute={handleRestoreRoute}
+              pinsLocked={bookingStep === "quotation"}
+              isVehicleDetailsOpen={!!selectedQuote}
+            />
+          </div>
         </div>
 
-        {/* RIGHT — Vehicle Details Panel (conditional dynamic 3rd pane) */}
+        {/* RIGHT BLOCK — Vehicle Details */}
         {selectedQuote && (
-          <div style={{
-            overflow: 'hidden',
-            minHeight: 0,
-            animation: 'fadeInSlideLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-          }}>
+          <div className="flex-none hidden lg:flex flex-col w-[380px] xl:w-[420px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl md:rounded-3xl z-20 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden animate-in slide-in-from-right-8 fade-in">
             <VehicleDetailsPanel option={selectedQuote} />
           </div>
         )}

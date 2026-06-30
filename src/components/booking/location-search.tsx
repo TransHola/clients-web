@@ -285,7 +285,7 @@ export function LocationSearchInput({
               width,
               background: 'white', border: '1.5px solid #e2e8f0',
               borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-              zIndex: 1000, maxHeight: `${MAX_HEIGHT}px`, overflowY: 'auto', padding: '10px',
+              zIndex: 999999, maxHeight: `${MAX_HEIGHT}px`, overflowY: 'auto', padding: '10px',
               animation: 'fadeIn 0.2s ease'
             }}>
           {/* GIS live results first */}

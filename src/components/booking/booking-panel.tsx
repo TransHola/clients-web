@@ -249,6 +249,20 @@ export function BookingPanel({
 
   React.useEffect(() => {
     setMounted(true)
+    fetch('https://ipapi.co/json/')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.city && data.country_name) {
+          setClientGeoContext({
+            city: data.city,
+            country: data.country_name,
+            countryCode: data.country_code,
+            lat: data.latitude,
+            lon: data.longitude
+          })
+        }
+      })
+      .catch(err => console.error("Could not fetch IP location", err))
   }, [])
 
   // Track original typed addresses for reinstate
@@ -1272,9 +1286,11 @@ export function BookingPanel({
   const today = mounted ? `${_localD.getFullYear()}-${String(_localD.getMonth() + 1).padStart(2, '0')}-${String(_localD.getDate()).padStart(2, '0')}` : ''
 
   return (
-    <div style={{ display: 'flex', width: '100%', height: '100%', boxSizing: 'border-box' }}>
-      <div style={{
-        width: activeStep === "search" ? '100%' : '60%',
+    <div style={{ display: 'flex', gap: activeStep === 'quotation' ? '12px' : '0', width: '100%', height: '100%', boxSizing: 'border-box' }}>
+      <div 
+        className={activeStep === 'quotation' ? "bg-white/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl" : ""}
+        style={{
+        width: activeStep === "search" ? '100%' : '400px',
         flexShrink: 0,
         position: 'relative',
         overflowY: 'auto',
@@ -1948,7 +1964,7 @@ export function BookingPanel({
                                 setPassengers(v); setPassengerInput(String(v));
                               }
                             }}
-                            style={{ width: '100%', border: 'none', outline: 'none', fontSize: '13px', fontWeight: 700, color: '#0f172a', background: 'transparent' }}
+                            style={{ width: '35px', border: 'none', outline: 'none', fontSize: '15px', fontWeight: 700, color: 'inherit', background: 'transparent', textAlign: 'center' }}
                           />
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
@@ -1979,24 +1995,25 @@ export function BookingPanel({
                       <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '5px' }}>
                         {(!showReturn && !isShuttle) ? 'Start Date' : 'Dates (Select all that apply)'}
                       </label>
-                      <Popover>
-                        <PopoverTrigger
-                          style={{
-                            width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px',
-                            border: missingFields.includes('date') ? '1.5px solid #ef4444' : `1.5px solid ${startDate ? '#2563eb' : '#cbd5e1'}`, fontSize: '13px',
-                            fontWeight: 700, background: 'white', boxSizing: 'border-box', color: startDate ? '#0f172a' : '#94a3b8',
-                            display: 'flex', alignItems: 'center', justifyContent: 'flex-start', cursor: 'pointer', outline: 'none',
-                            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
-                          }}
-                        >
-                          <CalendarDays style={{ width: '16px', height: '16px', marginRight: '8px', color: startDate ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {(!showReturn && !isShuttle)
-                              ? ((multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? format(parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate), 'PPP') : <span>Pick a date</span>)
-                              : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'PPP') : multiDayStore.length > 1 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
-                          </span>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 99999 }}>
+                      <div style={{ position: 'relative' }}>
+                        <Popover>
+                          <PopoverTrigger
+                            style={{
+                              width: '100%', height: '42px', padding: '0 36px 0 12px', borderRadius: '10px',
+                              border: missingFields.includes('date') ? '1.5px solid #ef4444' : `1.5px solid ${startDate ? '#2563eb' : '#cbd5e1'}`, fontSize: '13px',
+                              fontWeight: 700, background: 'white', boxSizing: 'border-box', color: startDate ? '#0f172a' : '#94a3b8',
+                              display: 'flex', alignItems: 'center', justifyContent: 'flex-start', cursor: 'pointer', outline: 'none',
+                              overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
+                            }}
+                          >
+                            <CalendarDays style={{ width: '16px', height: '16px', marginRight: '8px', color: startDate ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {(!showReturn && !isShuttle)
+                                ? ((multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? format(parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate), 'PPP') : <span>Pick a date</span>)
+                                : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'PPP') : multiDayStore.length > 1 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
+                            </span>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 99999 }}>
                           {(!showReturn && !isShuttle) ? (
                             <Calendar
                               mode="single"
@@ -2099,7 +2116,24 @@ export function BookingPanel({
                             />
                           )}
                         </PopoverContent>
-                      </Popover>
+                        </Popover>
+                        {(startDate || multiDayStore.length > 0) && (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setStartDate('');
+                              setEndDate('');
+                              setMultiDayStore([]);
+                              if (activeDayIdx > 0) setActiveDayIdx(0);
+                            }}
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Clear date"
+                          >
+                            <X style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {tripType === 'one-way' && (
                       <div>
@@ -3692,11 +3726,11 @@ export function BookingPanel({
       </div>
 
       {activeStep === "quotation" && (
-        <div style={{
+        <div 
+          className="bg-white/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl"
+          style={{
           flex: 1,
           minWidth: 0,
-          borderLeft: '1px solid #e2e8f0',
-          background: '#f8fafc',
           overflowY: 'auto',
           overflowX: 'hidden',
           animation: 'fadeInSlideLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)'
