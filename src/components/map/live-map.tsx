@@ -250,8 +250,9 @@ function MapController({
   pickup?: PinLocation | null
   dropoff?: PinLocation | null
   stops?: StopLocation[]
-  userLocation?: { lat: number; lon: number } | null
+  userLocation?: { lat: number; lon?: number; lng?: number } | null
   isVehicleDetailsOpen?: boolean
+  pinsLocked?: boolean
 }) {
   const map = useMap()
 
@@ -288,8 +289,8 @@ function MapController({
           if (animate) map.flyTo(all[0], 15, { duration: 1.0 })
           else map.setView(all[0], 15, { animate: false })
         } else if (userLocation) {
-          if (animate) map.flyTo([Number(userLocation.lat) || 20, Number(userLocation.lon) || 0], 13, { duration: 1.2 })
-          else map.setView([Number(userLocation.lat) || 20, Number(userLocation.lon) || 0], 13, { animate: false })
+          if (animate) map.flyTo([Number(userLocation.lat) || 20, Number(userLocation.lon || userLocation.lng) || 0], 13, { duration: 1.2 })
+          else map.setView([Number(userLocation.lat) || 20, Number(userLocation.lon || userLocation.lng) || 0], 13, { animate: false })
         }
       } catch (e) {
         // ignore Leaflet unmount issues

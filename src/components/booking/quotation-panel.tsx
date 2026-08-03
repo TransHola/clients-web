@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   Users, Briefcase, Zap, ShieldCheck, CheckCircle2, ChevronDown, ChevronRight, Droplets, Wifi, Coffee, Baby, MapPin, Grid, Info, Clock, RefreshCw, BookmarkPlus, CreditCard, ArrowLeft, XCircle, Download, ArrowRight, Eye, X, AlertTriangle
 } from "lucide-react"
@@ -15,6 +16,8 @@ import { createClient } from "@/lib/supabase/client"
 import { OptimizationSolver, OptimizationResult } from "@/lib/rate-engine/optimization-solver"
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { formatPhone } from "@/lib/formatPhone"
+import { PhoneInput } from "@transhola/ui"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_mock');
 
@@ -111,7 +114,8 @@ function useCountdown(expiresAt: Date) {
 export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers = 1, routeDistanceKm = 40, tripType = "one-way", pickupLabel = "Pickup", dropoffLabel = "Dropoff", bookingDetails, expirationHours = 18 }: {
   onBack: () => void; onSelect: (id?: string) => void; onSelectionChange?: (option: any | null) => void; passengers?: number; routeDistanceKm?: number; tripType?: string; pickupLabel?: string; dropoffLabel?: string; bookingDetails?: any; expirationHours?: number;
 }) {
-    const [user, setUser] = React.useState<any>(null);
+  const router = useRouter();
+  const [user, setUser] = React.useState<any>(null);
   const [showAuthDialog, setShowAuthDialog] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<"book" | "quote" | null>(null);
 
@@ -347,15 +351,11 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   const advancedOptions = singleServiceOptions.slice(4)
 
   if (step === "payment" && selected) {
-    return <PaymentPanel option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id?: string) => { if(id) setBookingId(id); setStep("confirmed") }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+    return <PaymentPanel option={selected} bookingDetails={{ ...bookingDetails, isThirdParty, thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined }} currency={currency} onBack={() => setStep("select")} onConfirm={(id?: string) => { if(id) setBookingId(id); router.replace(`/booking-success/${id || bookingDetails?.ref || 'TRN-PENDING'}`) }} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
   }
 
-  if (step === "confirmed" && selected) return (
-    <>
-      <ConfirmationPanel bookingId={bookingId} option={selected} bookingDetails={bookingDetails} currency={currency} onDone={(id?: string) => onSelect(id)} onCancel={() => setShowCancel(true)} />
-      {showCancel && <CancellationModal onClose={() => setShowCancel(false)} onConfirmed={() => { setShowCancel(false); onSelect() }} />}
-    </>
-  )
+  // The confirmation step is now handled by the dedicated /booking-success page.
+  if (step === "confirmed" && selected) return null;
 
   const renderOption = (opt: any) => {
     const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
@@ -892,12 +892,12 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
                 />
-                <input
-                  type="tel"
+                <PhoneInput
                   placeholder="Phone Number"
                   value={thirdPartyInfo.phone}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                  onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
+                  className="rounded-[10px] text-[13px]"
+                  style={{ width: '100%', outline: 'none' }}
                 />
                 <input
                   type="text"
@@ -1067,9 +1067,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
       } else {
         const result = await stripe.confirmPayment({
           elements,
-          confirmParams: {
-            setup_future_usage: 'off_session',
-          },
+          confirmParams: {},
           redirect: 'if_required',
         });
         error = result.error;
@@ -1132,13 +1130,13 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
       const responseData = await res.json();
       localStorage.removeItem("saved_itinerary");
       setPayState("success");
-      setTimeout(() => onConfirm(responseData?.data?.id), 1200);
+      setTimeout(() => onConfirm(responseData?.data?.id), 200);
     } catch (err) {
       console.error("[Gateway] Checkout Error:", err);
       setPayState("error");
       setErrorMessage("Payment succeeded but booking creation failed.");
-      setTimeout(() => setPayState("success"), 2000);
-      setTimeout(() => onConfirm(), 3200);
+      setTimeout(() => setPayState("success"), 200);
+      setTimeout(() => onConfirm(), 200);
     }
   }
 
@@ -1226,12 +1224,12 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
                   onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
                 />
-                <input
-                  type="tel"
+                <PhoneInput
                   placeholder="Phone Number"
                   value={thirdPartyInfo?.phone || ""}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                  onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
+                  className="rounded-[10px] text-[13px]"
+                  style={{ width: '100%', outline: 'none' }}
                 />
                 <input
                   type="text"
@@ -1398,80 +1396,175 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
 // ─── Confirmation Panel ────────────────────────────────────────────────────────
 function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "AED", onDone, onCancel }: { bookingId?: string; option: VehicleOption; bookingDetails?: any; currency?: string; onDone: (id?: string) => void; onCancel: () => void }) {
   const ref = React.useMemo(() => bookingId ? `TRN-${bookingId.substring(0, 8).toUpperCase()}` : `TH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`, [bookingId])
-  const [progress, setProgress] = React.useState(0) // 0=confirmed, 1=assigned, 2=enroute
   const [showReceipt, setShowReceipt] = React.useState(false)
 
-  React.useEffect(() => {
-    const t1 = setTimeout(() => setProgress(1), 3000)
-    const t2 = setTimeout(() => setProgress(2), 7000)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [])
+  const tripDateTime = React.useMemo(() => {
+    if (bookingDetails?.startDate && bookingDetails?.startTime) {
+      return new Date(`${bookingDetails.startDate}T${bookingDetails.startTime}`);
+    }
+    return new Date(); // fallback to immediate
+  }, [bookingDetails]);
 
-  const steps = [
-    { label: "Booking Confirmed", icon: CheckCircle2, color: '#16a34a' },
-    { label: "Driver Assigned", icon: Users, color: '#2563eb' },
-    { label: "En Route", icon: MapPin, color: '#7c3aed' },
-  ]
+  const timeDiffMs = tripDateTime.getTime() - Date.now();
+  const isFuture = timeDiffMs > 2 * 60 * 60 * 1000; // > 2 hours away
+  
+  // Realism: use a small timeout to "activate" the steps so it animates in
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => { setMounted(true) }, []);
+
+  const steps = React.useMemo(() => {
+    if (isFuture) {
+      return [
+        { label: "Confirmed", icon: CheckCircle2, color: '#10b981', status: 'done', text: 'Secured' },
+        { label: "Scheduled", icon: Clock, color: '#3b82f6', status: 'active', text: 'Awaiting date' },
+        { label: "Dispatch", icon: MapPin, color: '#94a3b8', status: 'pending', text: 'Prior to pickup' },
+      ];
+    } else {
+      return [
+        { label: "Confirmed", icon: CheckCircle2, color: '#10b981', status: 'done', text: 'Secured' },
+        { label: "Preparing", icon: Zap, color: '#3b82f6', status: 'active', text: 'Vehicle assigned' },
+        { label: "En Route", icon: MapPin, color: '#94a3b8', status: 'pending', text: 'Approaching' },
+      ];
+    }
+  }, [isFuture]);
+
+  const pickupLabel = isFuture ? 'SCHEDULED FOR' : 'PICKUP ETA';
+  const pickupValue = isFuture 
+    ? tripDateTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : (option.eta || '10-20 min');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', padding: '32px 22px 24px' }}>
-      {/* Hero */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: '28px' }}>
-        <div style={{ position: 'relative', width: '80px', height: '80px', marginBottom: '18px' }}>
-          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#dcfce7', animation: 'successPulse 0.5s ease' }} />
-          <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '50%', background: '#dcfce7', border: '3px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle2 style={{ width: '38px', height: '38px', color: '#16a34a' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', padding: '0', background: '#f8fafc', animation: 'fadeIn 0.5s ease-out' }}>
+      <style>
+        {`
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+          @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+          @keyframes successPulse { 
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 
+            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } 
+          }
+          .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.05);
+          }
+        `}
+      </style>
+
+      {/* Premium Hero Section */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #020617 0%, #0f172a 100%)', 
+        padding: '50px 24px 40px', 
+        display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+        borderBottomLeftRadius: '32px', borderBottomRightRadius: '32px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+        position: 'relative', overflow: 'hidden',
+        animation: 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
+      }}>
+        <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: 'radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 60%)', pointerEvents: 'none' }} />
+        
+        <div style={{ position: 'relative', width: '80px', height: '80px', marginBottom: '24px', animation: 'scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both' }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)', animation: mounted ? 'successPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none' }} />
+          <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)' }}>
+            <CheckCircle2 style={{ width: '40px', height: '40px', color: 'white' }} />
           </div>
         </div>
-        <h2 style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.5px', color: '#0f172a', margin: '0 0 6px' }}>Booking Confirmed!</h2>
-        <p style={{ fontSize: '13px', color: '#64748b', fontWeight: 500, margin: 0, lineHeight: 1.6 }}>Your booking is confirmed. Confirmation sent to your email.</p>
+        <h2 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '-0.5px', color: 'white', margin: '0 0 12px', textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>Booking Confirmed</h2>
+        <p style={{ fontSize: '15px', color: '#cbd5e1', fontWeight: 500, margin: 0, lineHeight: 1.6, maxWidth: '280px', opacity: 0.9 }}>
+          Your vehicle is securely reserved. Confirmation sent to your email.
+        </p>
       </div>
 
-      {/* 3-step progress */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '0', marginBottom: '26px' }}>
-        {steps.map((s, i) => {
-          const done = progress > i
-          const active = progress === i
-          const Step = s.icon
-          return (
-            <React.Fragment key={i}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minWidth: '70px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: done || active ? s.color : '#f1f5f9', border: `2.5px solid ${done || active ? s.color : '#e2e8f0'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.4s' }}>
-                  <Step style={{ width: '16px', height: '16px', color: done || active ? 'white' : '#cbd5e1' }} />
+      <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', marginTop: '-30px', position: 'relative', zIndex: 10 }}>
+        
+        {/* Dynamic Timeline */}
+        <div className="glass-panel" style={{ padding: '28px 20px', marginBottom: '20px', animation: 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: '16px', left: '10%', right: '10%', height: '4px', background: '#f1f5f9', zIndex: 0, borderRadius: '2px' }} />
+            <div style={{ position: 'absolute', top: '16px', left: '10%', width: mounted ? '40%' : '0%', height: '4px', background: 'linear-gradient(90deg, #10b981, #3b82f6)', zIndex: 0, borderRadius: '2px', transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1) 0.5s' }} />
+            
+            {steps.map((s, i) => {
+              const Step = s.icon;
+              return (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', minWidth: '76px', position: 'relative', zIndex: 1, opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(15px)', transition: `all 0.5s cubic-bezier(0.4, 0, 0.2, 1) ${(i * 0.15) + 0.3}s` }}>
+                  <div style={{ 
+                    width: '36px', height: '36px', borderRadius: '50%', 
+                    background: s.status === 'done' ? '#10b981' : s.status === 'active' ? '#3b82f6' : 'white', 
+                    border: `4px solid ${s.status === 'done' ? '#10b981' : s.status === 'active' ? '#3b82f6' : '#e2e8f0'}`, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    boxShadow: s.status !== 'pending' ? `0 4px 12px ${s.status === 'done' ? 'rgba(16,185,129,0.3)' : 'rgba(59,130,246,0.3)'}` : '0 2px 4px rgba(0,0,0,0.02)',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    <Step style={{ width: '16px', height: '16px', color: s.status !== 'pending' ? 'white' : '#cbd5e1' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: s.status !== 'pending' ? '#0f172a' : '#94a3b8', textAlign: 'center', lineHeight: 1.2 }}>{s.label}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#94a3b8', textAlign: 'center' }}>{s.text}</span>
+                  </div>
                 </div>
-                <span style={{ fontSize: '10px', fontWeight: 700, color: done || active ? s.color : '#cbd5e1', textAlign: 'center', lineHeight: 1.3 }}>{s.label}</span>
-              </div>
-              {i < steps.length - 1 && (
-                <div style={{ flex: 1, height: '2.5px', background: progress > i ? steps[i + 1].color : '#e2e8f0', marginTop: '17px', transition: 'background 0.4s', borderRadius: '2px' }} />
-              )}
-            </React.Fragment>
-          )
-        })}
-      </div>
-
-      {/* Detail card */}
-      <div style={{ background: '#f8fafc', borderRadius: '16px', padding: '18px', border: '1.5px solid #e2e8f0', marginBottom: '20px' }}>
-        {[{ label: 'BOOKING REF', value: ref }, { label: 'FLEET', value: option.label }, { label: 'AMOUNT', value: `${currency} ${option.price}` }, { label: 'PICKUP ETA', value: option.eta }].map(({ label, value }) => (
-          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, letterSpacing: '0.05em' }}>{label}</span>
-            <span style={{ fontSize: '13px', fontWeight: label === 'AMOUNT' ? 900 : 700, color: label === 'AMOUNT' ? '#16a34a' : '#0f172a' }}>{value}</span>
+              )
+            })}
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* CTAs */}
-      <button onClick={() => onDone(bookingId)} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', marginBottom: '10px' }}>
-        Track My Ride →
-      </button>
-      <button onClick={() => setShowReceipt(true)} style={{ width: '100%', height: '44px', borderRadius: '14px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
-        <Eye style={{ width: '14px', height: '14px' }} /> View Receipt
-      </button>
+        {/* Detail Glassmorphism Card */}
+        <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px', animation: 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both' }}>
+          {[
+            { label: 'BOOKING REF', value: ref, color: '#0f172a' }, 
+            { label: 'FLEET', value: option.label, color: '#0f172a' }, 
+            { label: 'AMOUNT', value: `${currency} ${option.price}`, color: '#10b981' }, 
+            { label: pickupLabel, value: pickupValue, color: '#3b82f6' }
+          ].map(({ label, value, color }, index, arr) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: index !== arr.length - 1 ? '16px' : '0', marginBottom: index !== arr.length - 1 ? '16px' : '0', borderBottom: index !== arr.length - 1 ? '1px dashed #e2e8f0' : 'none' }}>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, letterSpacing: '0.5px' }}>{label}</span>
+              <span style={{ fontSize: '14px', fontWeight: 800, color: color }}>{value}</span>
+            </div>
+          ))}
+        </div>
 
-      {/* Danger zone */}
-      <div style={{ marginTop: '18px', textAlign: 'center' }}>
-        <button onClick={onCancel} style={{ fontSize: '12px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
-          Cancel Booking
-        </button>
+        {/* CTAs */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: 'auto', animation: 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both' }}>
+          <button onClick={() => onDone(bookingId)} style={{ 
+            width: '100%', height: '56px', borderRadius: '16px', 
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', 
+            color: 'white', fontWeight: 800, fontSize: '15px', border: 'none', cursor: 'pointer', 
+            boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)', transition: 'transform 0.1s, box-shadow 0.2s' 
+          }}
+          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.98)'}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            Track My Ride
+          </button>
+          
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={() => setShowReceipt(true)} style={{ 
+              flex: 1, height: '48px', borderRadius: '16px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '14px', 
+              border: '1.5px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              transition: 'background 0.2s'
+            }}
+            onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+            onMouseOut={e => e.currentTarget.style.background = 'white'}
+            >
+              <Eye style={{ width: '18px', height: '18px', color: '#64748b' }} /> Receipt
+            </button>
+            <button onClick={onCancel} style={{ 
+              flex: 1, height: '48px', borderRadius: '16px', background: '#fff1f2', color: '#e11d48', fontWeight: 700, fontSize: '14px', 
+              border: '1.5px solid #ffe4e6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              transition: 'background 0.2s'
+            }}
+            onMouseOver={e => e.currentTarget.style.background = '#ffe4e6'}
+            onMouseOut={e => e.currentTarget.style.background = '#fff1f2'}
+            >
+              <XCircle style={{ width: '18px', height: '18px' }} /> Cancel
+            </button>
+          </div>
+        </div>
+
       </div>
 
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} bookingDetails={{ ...bookingDetails, option, ref }} />

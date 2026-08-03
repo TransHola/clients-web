@@ -32,7 +32,7 @@ export function ClientHeader() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUser(user)
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         setProfile(data)
       }
     }
@@ -54,7 +54,7 @@ export function ClientHeader() {
               {[
                 { href: '/', label: 'Book Service' },
                 { href: '/quotations', label: 'Quotations' },
-                { href: '/trips', label: 'My Trips' },
+                { href: '/trips', label: 'My Bookings' },
                 { href: '/billing', label: 'Billing' },
                 { href: '/support', label: 'Support' },
               ].map((link) => {

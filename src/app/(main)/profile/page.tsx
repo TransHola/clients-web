@@ -9,6 +9,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Camera, Shield, Lock, Smartphone, Download, Trash2, Bell, Globe, Moon, Eye, EyeOff, AlertTriangle } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
+import { formatPhone } from "@/lib/formatPhone"
+import { PhoneInput } from "@transhola/ui"
 
 function parseUserAgent(ua: string) {
   if (!ua) return "Unknown Device"
@@ -58,7 +60,7 @@ export default function ProfilePage() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setProfile(data)
           setFirstName(data.first_name || data.full_name?.split(' ')[0] || "")
@@ -95,7 +97,7 @@ export default function ProfilePage() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      await supabase.from('profiles').update({
+      const { error } = await supabase.from('profiles').update({
         first_name: firstName,
         last_name: lastName,
         full_name: `${firstName} ${lastName}`.trim(),
@@ -103,8 +105,13 @@ export default function ProfilePage() {
         preferences: { ...profile?.preferences, companyName: companyName }
       }).eq('id', user.id)
       
-      // Update local state
-      setProfile({ ...profile, first_name: firstName, last_name: lastName, phone_number: phone, preferences: { ...profile?.preferences, companyName: companyName } })
+      if (error) {
+        alert("Failed to save profile: " + error.message)
+      } else {
+        // Update local state
+        setProfile({ ...profile, first_name: firstName, last_name: lastName, phone_number: phone, preferences: { ...profile?.preferences, companyName: companyName } })
+        alert("Profile saved successfully.")
+      }
     }
     setIsSaving(false)
   }
@@ -198,7 +205,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-2">Phone Number</label>
-              <Input value={phone} onChange={e => setPhone(e.target.value)} className="h-11 rounded-xl" />
+              <PhoneInput value={phone} onChange={(val) => setPhone(val || "")} className="h-11 rounded-xl" />
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-2">Company / Entity</label>

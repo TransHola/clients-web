@@ -194,7 +194,7 @@ export function BookingPanel({
     const fetchUnit = async () => {
       if (!clientGeoContext.countryCode) return
       const supabase = createClient()
-      const { data } = await supabase.from('country_configurations').select('distance_unit').eq('country_code', clientGeoContext.countryCode).single()
+      const { data } = await supabase.from('country_configurations').select('distance_unit').eq('country_code', clientGeoContext.countryCode).maybeSingle()
       
       const newUnit = data?.distance_unit === 'mi' ? 'mi' : 'km'
       setClientGeoContext(prev => ({
@@ -262,7 +262,7 @@ export function BookingPanel({
           })
         }
       })
-      .catch(err => console.error("Could not fetch IP location", err))
+      .catch(err => console.warn("IP location fallback failed (likely blocked by browser)", err.message))
   }, [])
 
   // Track original typed addresses for reinstate
@@ -307,7 +307,7 @@ export function BookingPanel({
     if (quoteId) {
       async function hydrateQuote() {
         const supabase = createClient();
-        const { data, error } = await supabase.from('bookings').select('*').eq('id', quoteId).single();
+        const { data, error } = await supabase.from('bookings').select('*').eq('id', quoteId).maybeSingle();
         if (data && (data.booking_details || data.quotation_details)) {
           const d = data.booking_details || data.quotation_details;
 
@@ -1506,7 +1506,7 @@ export function BookingPanel({
                                 <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{stop.address}</p>
                                 {stop.stopDurationMin > 0 && (
                                   <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <Timer style={{ width: '10px', height: '10px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin}m
+                                    <Timer style={{ width: '10px', height: '10px', color: '#f59e0b' }} /> Wait {formatDuration((stop.stopDurationMin || 0) * 60)}
                                   </div>
                                 )}
                               </div>
@@ -1583,7 +1583,7 @@ export function BookingPanel({
                               <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {arr}
                             </span>
                             <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {pickupWaitMin}m
+                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {formatDuration((pickupWaitMin || 0) * 60)}
                             </span>
                             <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
                               <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Depart {dep} {dayOffset && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffset}</span>}
@@ -1641,7 +1641,7 @@ export function BookingPanel({
                                 <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
                               </span>
                               <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                                <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {stop.stopDurationMin || 0}m
+                                <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {formatDuration((stop.stopDurationMin || 0) * 60)}
                               </span>
                               <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
                                 <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Depart {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}
@@ -1699,7 +1699,7 @@ export function BookingPanel({
                               <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
                             </span>
                             <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {dropoffWaitMin || 0}m
+                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {formatDuration((dropoffWaitMin || 0) * 60)}
                             </span>
                             <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
                               <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Finish {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}

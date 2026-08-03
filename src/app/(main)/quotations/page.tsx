@@ -35,7 +35,7 @@ export default function QuotationsPage() {
         const { data: { session } } = await supabase.auth.getSession()
         const userId = session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34"
 
-        const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').single()
+        const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').maybeSingle()
         
         let query = supabase
           .from("bookings")

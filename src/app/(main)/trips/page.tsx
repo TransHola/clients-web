@@ -52,7 +52,7 @@ export default function TripsPage() {
     setIsCancelling(true)
     try {
       const supabase = createClient()
-      const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'cancelled').single()
+      const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'cancelled').maybeSingle()
       if (statusData) {
         const { error } = await supabase.from('bookings').update({ status_id: statusData.id }).eq('id', cancellingId)
         if (error) throw error
@@ -179,7 +179,21 @@ export default function TripsPage() {
         setLoading(false)
       }
     }
+
     loadBookings()
+
+    // Real-time Subscription for instant updates
+    const adminClient = createClient();
+    const channel = adminClient
+      .channel('client_bookings_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        loadBookings();
+      })
+      .subscribe();
+
+    return () => {
+      adminClient.removeChannel(channel);
+    }
   }, [])
 
   const tabs = ["upcoming", "in_progress", "completed", "cancelled"] as const
@@ -188,7 +202,7 @@ export default function TripsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">My Trips</h1>
+          <h1 className="text-3xl font-black tracking-tight">My Bookings</h1>
           <p className="text-sm text-muted-foreground mt-1 font-medium">Track all your bookings in one place.</p>
         </div>
         <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-xl border">

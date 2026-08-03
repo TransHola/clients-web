@@ -17,10 +17,11 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { register } from "@/app/actions/auth"
-import { useActionState, useState } from "react"
+import { useActionState, useState, useEffect } from "react"
 import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Building2, Landmark, User } from "lucide-react"
+import { PhoneInput, type Country } from "@transhola/ui"
+import { Building2, Landmark, User, Eye, EyeOff } from "lucide-react"
 
 export function RegisterForm({
   className,
@@ -31,6 +32,20 @@ export function RegisterForm({
   }, null)
 
   const [accountType, setAccountType] = useState("individual")
+  const [showPassword, setShowPassword] = useState(false)
+  const [phone, setPhone] = useState<string>("")
+  const [defaultCountry, setDefaultCountry] = useState<Country>("US")
+
+  useEffect(() => {
+    fetch("https://ipapi.co/json/")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.country_code) {
+          setDefaultCountry(data.country_code as Country)
+        }
+      })
+      .catch(console.error)
+  }, [])
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -59,20 +74,33 @@ export function RegisterForm({
               {accountType === 'entity' && (
                 <Field>
                   <FieldLabel htmlFor="entityName">Registered Entity Name</FieldLabel>
-                  <Input id="entityName" name="entityName" placeholder="Acme Corp LLC" required={accountType === 'entity'} />
+                  <Input id="entityName" name="entityName" placeholder="Acme Corp LLC" required={accountType === 'entity'} className="h-12 text-base" />
                 </Field>
               )}
               
               <div className="grid grid-cols-2 gap-4">
                 <Field>
                   <FieldLabel htmlFor="firstName">First Name</FieldLabel>
-                  <Input id="firstName" name="firstName" placeholder="John" required />
+                  <Input id="firstName" name="firstName" placeholder="John" required className="h-12 text-base" />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="lastName">Last Name</FieldLabel>
-                  <Input id="lastName" name="lastName" placeholder="Doe" required />
+                  <Input id="lastName" name="lastName" placeholder="Doe" required className="h-12 text-base" />
                 </Field>
               </div>
+
+              <Field>
+                <FieldLabel htmlFor="phone">Phone Number</FieldLabel>
+                <input type="hidden" name="phone" value={phone} />
+                <PhoneInput
+                  id="phone"
+                  placeholder="Enter phone number"
+                  defaultCountry={defaultCountry}
+                  value={phone}
+                  onChange={setPhone as any}
+                  required
+                />
+              </Field>
 
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -82,11 +110,27 @@ export function RegisterForm({
                   type="email"
                   placeholder="m@example.com"
                   required
+                  className="h-12 text-base"
                 />
               </Field>
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Input id="password" name="password" type="password" required />
+                <div className="relative">
+                  <Input 
+                    id="password" 
+                    name="password" 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    className="h-12 text-base pr-10" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3.5 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </Field>
 
               {state?.error && (

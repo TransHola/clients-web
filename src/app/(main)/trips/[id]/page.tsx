@@ -339,12 +339,12 @@ export default function BookingDetailsProfile() {
          .from('bookings')
          .select('*')
          .eq('id', decodedId)
-         .single();
+         .maybeSingle();
 
       if (data) {
          let fallbackName = "Guest User";
          if (data.user_id) {
-            const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).single();
+            const { data: profile } = await supabase.from('profiles').select('first_name, last_name, full_name').eq('id', data.user_id).maybeSingle();
             if (profile) {
                fallbackName = profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || "Guest User";
             }

@@ -174,6 +174,21 @@ export default function BillingPage() {
     loadInvoices()
     loadPayments()
     fetchPaymentMethods()
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('client_billing_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
+        loadInvoices();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        loadPayments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    }
   }, [fetchPaymentMethods])
 
   const handleSetDefault = async (id: string) => {
