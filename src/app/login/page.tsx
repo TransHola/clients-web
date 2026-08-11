@@ -49,7 +49,7 @@ export default function Page() {
                     </div>
 
                     <div className="text-sm text-slate-500 font-medium">
-                        &copy; {new Date().getFullYear()} TransHola Technologies Inc.
+                        &copy; {new Date().getFullYear()} TransHola Inc.
                     </div>
                 </div>
 

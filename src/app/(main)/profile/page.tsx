@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Camera, Shield, Lock, Smartphone, Download, Trash2, Bell, Globe, Moon, Eye, EyeOff, AlertTriangle } from "lucide-react"
+import { Camera, Shield, Lock, Smartphone, Download, Trash2, Bell, Globe, Moon, Eye, EyeOff, AlertTriangle, Fingerprint } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
 import { formatPhone } from "@/lib/formatPhone"
@@ -277,6 +277,39 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <Button size="sm" variant="outline" className="rounded-lg font-bold text-xs h-8">Enable 2FA</Button>
+              </div>
+            </div>
+
+            {/* Biometrics */}
+            <div className="rounded-2xl border bg-card p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Fingerprint className="w-5 h-5 text-blue-700" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Device Biometrics</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Register Face ID or Touch ID for faster login</p>
+                  </div>
+                </div>
+                <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="rounded-lg font-bold text-xs h-8 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
+                    onClick={async () => {
+                        try {
+                            const supabase = createClient()
+                            // @ts-ignore - passkey API is experimental
+                            const { error } = await supabase.auth.passkey.register()
+                            if (error) throw error
+                            alert("Device registered successfully for biometric login.")
+                        } catch (err: any) {
+                            alert(err.message || "Failed to register biometric device.")
+                        }
+                    }}
+                >
+                    Enroll Device
+                </Button>
               </div>
             </div>
 
