@@ -33,7 +33,7 @@ export function LoginForm({
       watch,
       formState: { errors }
   } = useForm<LoginFormData>({
-      resolver: zodResolver(loginSchema),
+      resolver: zodResolver(loginSchema) as any,
       defaultValues: {
           email: "",
           password: "",
@@ -66,7 +66,7 @@ export function LoginForm({
       formData.append("password", data.password)
 
       try {
-          const result = await login(formData)
+          const result: any = await login(formData)
           if (result?.error) {
               setAuthError(result.error)
           } else if (result?.success) {
@@ -105,7 +105,7 @@ export function LoginForm({
           <p className="text-slate-500 dark:text-slate-400 text-sm">Sign in to book and manage your premium rides.</p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-5">
+      <form onSubmit={handleSubmit(onSubmit as any)} className="p-8 space-y-5">
         {(authError || biometricError) && (
             <div className="p-3.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl flex items-center gap-3 text-sm text-red-600 dark:text-red-400 font-medium animate-in fade-in slide-in-from-top-2">
                 <ShieldCheck size={16} className="text-red-500 dark:text-red-400 shrink-0" />

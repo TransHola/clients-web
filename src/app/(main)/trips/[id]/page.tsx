@@ -1309,12 +1309,35 @@ export default function BookingDetailsProfile() {
                                                    </div>
                                                 )}
                                              </div>
-                                             {/* Status Indicators */}
+                                             {/* Status Indicators & Read Receipt Tooltip */}
                                              {msg.role === 'operator' && (
-                                                <div className="flex items-center gap-1 mt-1 px-1">
-                                                   <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider scale-90 origin-right">
-                                                      {msg.read ? 'Read' : 'Delivered'}
+                                                <div className="flex items-center gap-1 mt-1 px-1 relative group/tooltip cursor-pointer">
+                                                   <span className={`text-xs font-bold font-mono tracking-tighter ${msg.read ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                                      ✓✓
                                                    </span>
+                                                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                      {msg.read ? 'Viewed' : 'Delivered'}
+                                                   </span>
+
+                                                   {/* Hover Receipt Audit Popup */}
+                                                   <div className="absolute bottom-6 right-0 opacity-0 group-hover/tooltip:opacity-100 transition-opacity bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-[10px] space-y-1.5 w-60 z-50 pointer-events-none">
+                                                      <div className="font-black text-emerald-400 uppercase tracking-widest border-b border-slate-800 pb-1 flex justify-between">
+                                                         <span>Read Receipt Audit</span>
+                                                         <span className="text-emerald-300">{msg.read ? 'VIEWED' : 'DELIVERED'}</span>
+                                                      </div>
+                                                      <div className="flex justify-between">
+                                                         <span className="text-slate-400 font-bold">Viewed By:</span>
+                                                         <span className="font-bold text-white">Operator / Driver</span>
+                                                      </div>
+                                                      <div className="flex justify-between">
+                                                         <span className="text-slate-400 font-bold">Received At:</span>
+                                                         <span className="font-mono text-slate-300">{displayTime}</span>
+                                                      </div>
+                                                      <div className="flex justify-between">
+                                                         <span className="text-slate-400 font-bold">Viewed At:</span>
+                                                         <span className="font-mono text-emerald-300 font-bold">{exactTime}</span>
+                                                      </div>
+                                                   </div>
                                                 </div>
                                              )}
                                           </div>

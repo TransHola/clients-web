@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { GlobalNetworkErrorGuard } from "@/components/common/GlobalNetworkErrorGuard";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -21,6 +22,7 @@ export default function RootLayout({
         className={`${inter.variable} font-sans`}
       >
         <TooltipProvider>
+          <GlobalNetworkErrorGuard />
           {children}
         </TooltipProvider>
       </body>

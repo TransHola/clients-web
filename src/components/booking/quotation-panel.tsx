@@ -760,7 +760,10 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
       try {
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
+        const token = session?.access_token;
+        if (!token) {
+          throw new Error("Authentication required. Please sign in to complete booking.");
+        }
 
         const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
           method: "POST",
@@ -1094,7 +1097,10 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "MOCK_ENTERPRISE_JWT";
+      const token = session?.access_token;
+      if (!token) {
+        throw new Error("Authentication required. Please sign in to submit quotation.");
+      }
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
         method: "POST",
