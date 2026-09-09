@@ -1,42 +1,56 @@
 "use client"
 
 import * as React from "react"
-import { Layers, LocateFixed, RotateCcw, History } from "lucide-react"
+import { Layers, LocateFixed, RotateCcw, History, Check } from "lucide-react"
 import { MapContainer, TileLayer, Marker, Popup, useMap, ZoomControl } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import "leaflet-routing-machine"
 
-const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY ? `?api_key=${process.env.NEXT_PUBLIC_CARTO_API_KEY}` : ""
-
 const MAP_LAYERS = {
+  gray: {
+    name: "Clean Gray",
+    description: "Sleek, distraction-free grayscale basemap",
+    getUrl: (key?: string) => key 
+      ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${key}`
+      : "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    getClassName: (key?: string) => key ? "" : "map-tiles-clean-gray",
+    maxZoom: 22,
+    getAttribution: (key?: string) => key ? "&copy; CARTO" : "Map data © Google"
+  },
   street: {
     name: "Google 3D Street",
-    url: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    description: "Vibrant streets & landmarks",
+    getUrl: () => "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    getClassName: () => "",
     maxZoom: 22,
-    attribution: "Map data © Google"
+    getAttribution: () => "Map data © Google"
   },
   satellite: {
     name: "Google Satellite",
-    url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    description: "High-res satellite view",
+    getUrl: () => "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    getClassName: () => "",
     maxZoom: 22,
-    attribution: "Map data © Google"
+    getAttribution: () => "Map data © Google"
   },
-  light: {
-    name: "Clean Light",
-    url: cartoKey 
-      ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${cartoKey}`
-      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  osm: {
+    name: "OpenStreetMap",
+    description: "Open community road map",
+    getUrl: () => "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    getClassName: () => "",
     maxZoom: 19,
-    attribution: cartoKey ? "&copy; CARTO" : "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>"
+    getAttribution: () => "&copy; OpenStreetMap contributors"
   },
   dark: {
     name: "Dark Mode",
-    url: cartoKey
-      ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${cartoKey}`
+    description: "High-contrast dark canvas",
+    getUrl: (key?: string) => key
+      ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${key}`
       : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    getClassName: () => "",
     maxZoom: 16,
-    attribution: cartoKey ? "&copy; CARTO" : "Tiles &copy; Esri"
+    getAttribution: (key?: string) => key ? "&copy; CARTO" : "Tiles &copy; Esri"
   }
 }
 
@@ -643,8 +657,33 @@ export function LiveMap({
   const [liveOneWayDistance, setLiveOneWayDistance] = React.useState<number | null>(null)
   const [savedRoutes, setSavedRoutes] = React.useState<SavedRoute[]>([])
   const [showSaved, setShowSaved] = React.useState(false)
-  const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("street")
+  const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("gray")
   const [showLayerMenu, setShowLayerMenu] = React.useState(false)
+  const [cartoApiKey, setCartoApiKey] = React.useState<string>("")
+  const [savedPreferenceNotice, setSavedPreferenceNotice] = React.useState(false)
+
+  // Load preferred map layer and optional CARTO API key from localStorage on mount
+  React.useEffect(() => {
+    try {
+      const savedLayer = localStorage.getItem("transhola_preferred_map_layer") as keyof typeof MAP_LAYERS | null
+      if (savedLayer && MAP_LAYERS[savedLayer]) {
+        setMapLayer(savedLayer)
+      }
+      const savedKey = localStorage.getItem("transhola_carto_api_key") || process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
+      if (savedKey) {
+        setCartoApiKey(savedKey)
+      }
+    } catch {}
+  }, [])
+
+  const handleSelectLayer = (key: keyof typeof MAP_LAYERS) => {
+    setMapLayer(key)
+    try {
+      localStorage.setItem("transhola_preferred_map_layer", key)
+      setSavedPreferenceNotice(true)
+      setTimeout(() => setSavedPreferenceNotice(false), 2200)
+    } catch {}
+  }
 
   // AI Smart Score: 0–100. Uses time/km efficiency relative to a naive average speed baseline.
   const computeSmartScore = (durationSec: number, distanceM: number): number => {
@@ -763,6 +802,10 @@ export function LiveMap({
             95% { stroke-dashoffset: 0; opacity: 1; }
             100% { stroke-dashoffset: 0; opacity: 0; }
         }
+        .map-tiles-clean-gray {
+            filter: grayscale(100%) contrast(92%) brightness(104%) !important;
+            -webkit-filter: grayscale(100%) contrast(92%) brightness(104%) !important;
+        }
       `}</style>
       <MapContainer
         center={defaultCenter}
@@ -773,9 +816,11 @@ export function LiveMap({
       >
         {!isStaticPreview && <ZoomControl position="bottomright" />}
         <TileLayer
-          attribution={MAP_LAYERS[mapLayer].attribution}
-          url={MAP_LAYERS[mapLayer].url}
-          maxZoom={MAP_LAYERS[mapLayer].maxZoom}
+          key={`${mapLayer}-${cartoApiKey}`}
+          attribution={MAP_LAYERS[mapLayer]?.getAttribution(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || "Map data © Google"}
+          url={MAP_LAYERS[mapLayer]?.getUrl(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || MAP_LAYERS.gray.getUrl()}
+          maxZoom={MAP_LAYERS[mapLayer]?.maxZoom || 22}
+          className={MAP_LAYERS[mapLayer]?.getClassName(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || undefined}
         />
 
         {/* Auto-zoom */}
@@ -868,26 +913,58 @@ export function LiveMap({
             {showLayerMenu && (
               <div style={{
                 position: "absolute", top: 0, right: "48px",
-                background: "white", borderRadius: "12px", padding: "8px",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                background: "white", borderRadius: "14px", padding: "10px",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.06)",
                 border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "4px",
-                minWidth: "150px", animation: "fadeIn 0.2s ease"
+                minWidth: "210px", animation: "fadeIn 0.2s ease", zIndex: 1000
               }}>
-                {(Object.keys(MAP_LAYERS) as Array<keyof typeof MAP_LAYERS>).map(key => (
-                  <button
-                    key={key}
-                    onClick={() => { setMapLayer(key); setShowLayerMenu(false); }}
-                    style={{
-                      padding: "8px 12px", borderRadius: "8px", border: "none",
-                      background: mapLayer === key ? "#eff6ff" : "transparent",
-                      color: mapLayer === key ? "#2563eb" : "#475569",
-                      fontWeight: mapLayer === key ? 700 : 600,
-                      fontSize: "12px", textAlign: "left", cursor: "pointer",
-                      transition: "background 0.2s"
-                    }}>
-                    {MAP_LAYERS[key].name}
-                  </button>
-                ))}
+                <div style={{
+                  padding: "4px 8px 8px 8px", borderBottom: "1px solid #f1f5f9",
+                  display: "flex", alignItems: "center", justifyContent: "space-between"
+                }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Map View Preference
+                  </span>
+                  {savedPreferenceNotice && (
+                    <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 700 }}>
+                      ✓ Saved!
+                    </span>
+                  )}
+                </div>
+
+                {(Object.keys(MAP_LAYERS) as Array<keyof typeof MAP_LAYERS>).map(key => {
+                  const isSelected = mapLayer === key
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleSelectLayer(key)}
+                      style={{
+                        padding: "8px 10px", borderRadius: "8px", border: "none",
+                        background: isSelected ? "#eff6ff" : "transparent",
+                        color: isSelected ? "#2563eb" : "#334155",
+                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: "12px", textAlign: "left", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        transition: "all 0.15s ease"
+                      }}>
+                      <div>
+                        <div>{MAP_LAYERS[key].name}</div>
+                        <div style={{ fontSize: "10px", color: isSelected ? "#3b82f6" : "#94a3b8", fontWeight: 400 }}>
+                          {MAP_LAYERS[key].description}
+                        </div>
+                      </div>
+                      {isSelected && <Check style={{ width: "16px", height: "16px", color: "#2563eb", flexShrink: 0 }} />}
+                    </button>
+                  )
+                })}
+
+                <div style={{
+                  marginTop: "6px", paddingTop: "6px", borderTop: "1px solid #f1f5f9",
+                  fontSize: "10px", color: "#64748b", display: "flex", alignItems: "center", gap: "4px", paddingLeft: "4px"
+                }}>
+                  <Check style={{ width: "12px", height: "12px", color: "#10b981" }} />
+                  <span>Preference saved automatically</span>
+                </div>
               </div>
             )}
           </div>
