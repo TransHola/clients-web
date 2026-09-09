@@ -31,10 +31,10 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
           {(option.vehicles || [{ type: option.label || option.title || 'Standard', count: 1, seats: option.totalSeats || option.seats || 4 }]).map((v: any, idx: number) => {
-            const days = Math.max(1, option.daysCount || 1);
-            const avgDailyRate = v.price !== undefined ? v.price / days : 0;
-            const totalVehicleCost = v.price !== undefined ? v.price * (v.count || 1) : 0;
-            const curr = option.currencySymbol || option.currency || '$';
+            const days = Math.max(1, option.daysCount || (v.dailyBreakdown ? v.dailyBreakdown.length : 1));
+            const totalVehicleCost = v.price !== undefined ? v.price : (option.price || 0);
+            const avgDailyRate = days > 0 ? totalVehicleCost / days : totalVehicleCost;
+            const curr = option.currencySymbol || (option.currency === 'EUR' ? '€' : option.currency === 'USD' ? '$' : option.currency) || '€';
 
             return (
               <div key={idx} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
@@ -72,7 +72,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
                     <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {Array.from({ length: days }).map((_, dayIdx) => {
                         const hasBreakdown = v.dailyBreakdown && v.dailyBreakdown.length > dayIdx;
-                        const dayTotalCost = hasBreakdown ? v.dailyBreakdown[dayIdx] : avgDailyRate * (v.count || 1);
+                        const dayTotalCost = hasBreakdown ? v.dailyBreakdown[dayIdx] : avgDailyRate;
                         return (
                           <div key={dayIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
                             <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748b' }}>Day {dayIdx + 1}</span>

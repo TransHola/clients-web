@@ -181,10 +181,20 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         }
 
         const data = await res.json();
-        const returnedOptions = data.data?.options || [];
+        const retCurrency = data.data?.currency || 'EUR';
+        const retSymbol = data.data?.currencySymbol || (retCurrency === 'EUR' ? '€' : '$');
+        const numDays = Math.max(1, (payload as any).multiDayStore?.length || (payload as any).days || 1);
+
+        const returnedOptions = (data.data?.options || []).map((opt: any) => ({
+          ...opt,
+          currency: retCurrency,
+          currencySymbol: retSymbol,
+          daysCount: numDays
+        }));
+
         setOptions(returnedOptions);
-        if (data.data?.currency) setCurrency(data.data.currency);
-        if (data.data?.currencySymbol) setCurrencySymbol(data.data.currencySymbol);
+        setCurrency(retCurrency);
+        setCurrencySymbol(retSymbol);
         if (data.data?.taxes) setGlobalTaxes(data.data.taxes);
 
         if (data.data?.capacityExceeded && data.data?.message) {
