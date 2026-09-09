@@ -133,6 +133,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   const [currencySymbol, setCurrencySymbol] = React.useState<string>("");
   const [globalTaxes, setGlobalTaxes] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
+  const [capacityNotice, setCapacityNotice] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function fetchCalculations() {
@@ -186,6 +187,12 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         if (data.data?.currencySymbol) setCurrencySymbol(data.data.currencySymbol);
         if (data.data?.taxes) setGlobalTaxes(data.data.taxes);
 
+        if (data.data?.capacityExceeded && data.data?.message) {
+          setCapacityNotice(data.data.message);
+        } else {
+          setCapacityNotice(null);
+        }
+
         if (bookingDetails?.option) {
           const match = returnedOptions.find((o: any) => o.id === bookingDetails.option.id || o.label === bookingDetails.option.label);
           if (match) {
@@ -195,6 +202,10 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
             setSelected(bookingDetails.option);
             if (onSelectionChange) onSelectionChange(bookingDetails.option);
           }
+        } else if (returnedOptions.length > 0) {
+          const rec = returnedOptions.find((o: any) => o.isRecommended) || returnedOptions[0];
+          setSelected(rec);
+          if (onSelectionChange) onSelectionChange(rec);
         }
       } catch (err) {
         console.error("Calculate Error:", err);
@@ -559,6 +570,23 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           </>
         ) : (
           <>
+            {capacityNotice && (
+              <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#fffbeb', border: '1.5px solid #fef3c7', marginBottom: '16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <AlertTriangle style={{ width: '16px', height: '16px', color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '12px', color: '#92400e', lineHeight: 1.5 }}>
+                  <strong style={{ display: 'block', marginBottom: '2px', fontWeight: 800 }}>Fleet Capacity Notice</strong>
+                  {capacityNotice}
+                </div>
+              </div>
+            )}
+
+            {shown.length === 0 && (
+              <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+                <p style={{ fontWeight: 700, fontSize: '14px', margin: '0 0 6px', color: '#0f172a' }}>No Available Vehicles</p>
+                <p style={{ fontSize: '12px', margin: 0 }}>No partner operators currently service this area with active vehicles.</p>
+              </div>
+            )}
+
             {shown.length > 0 && (
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
