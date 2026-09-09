@@ -54,11 +54,15 @@ export function ClientHeader() {
               {[
                 { href: '/', label: 'Book Service' },
                 { href: '/quotations', label: 'Quotations' },
-                { href: '/trips', label: 'My Bookings' },
+                { href: '/bookings', label: 'My Bookings' },
                 { href: '/billing', label: 'Billing' },
                 { href: '/support', label: 'Support' },
               ].map((link) => {
-                const isActive = link.href === '/' ? pathname === '/' : pathname?.startsWith(link.href)
+                const isActive = link.href === '/'
+                  ? pathname === '/'
+                  : link.href === '/bookings'
+                    ? pathname?.startsWith('/bookings') || pathname?.startsWith('/trips')
+                    : pathname?.startsWith(link.href)
                 return (
                   <Link
                     key={link.href}
