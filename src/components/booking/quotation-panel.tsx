@@ -918,42 +918,69 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
             </label>
 
             {isThirdParty && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={thirdPartyInfo.firstName}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={thirdPartyInfo.lastName}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
-                <input
-                  type="email"
-                  placeholder="Email Address"
-                  value={thirdPartyInfo.email}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
-                />
-                <PhoneInput
-                  placeholder="Phone Number"
-                  value={thirdPartyInfo.phone}
-                  onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
-                  className="rounded-[10px] text-[13px]"
-                  style={{ width: '100%', outline: 'none' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Company (Optional)"
-                  value={thirdPartyInfo.company}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                      First Name <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. John"
+                      value={thirdPartyInfo.firstName}
+                      onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
+                      style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                      Last Name <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Doe"
+                      value={thirdPartyInfo.lastName}
+                      onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
+                      style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Email Address <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="passenger@example.com"
+                    value={thirdPartyInfo.email}
+                    onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
+                    style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Mobile Phone Number <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <PhoneInput
+                    placeholder="Enter mobile phone number"
+                    value={thirdPartyInfo.phone}
+                    onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
+                    className="rounded-[10px] text-[13px] bg-white"
+                    style={{ width: '100%', height: '42px', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Company / Agency Name <span style={{ fontSize: '10px', fontWeight: 500, color: '#94a3b8' }}>(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Travel Agency / Corporate Client"
+                    value={thirdPartyInfo.company}
+                    onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
+                    style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1253,42 +1280,69 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
             </label>
 
             {isThirdParty && setThirdPartyInfo && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={thirdPartyInfo?.firstName || ""}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={thirdPartyInfo?.lastName || ""}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
-                <input
-                  type="email"
-                  placeholder="Email Address"
-                  value={thirdPartyInfo?.email || ""}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', gridColumn: '1 / -1' }}
-                />
-                <PhoneInput
-                  placeholder="Phone Number"
-                  value={thirdPartyInfo?.phone || ""}
-                  onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
-                  className="rounded-[10px] text-[13px]"
-                  style={{ width: '100%', outline: 'none' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Company (Optional)"
-                  value={thirdPartyInfo?.company || ""}
-                  onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-                />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                      First Name <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. John"
+                      value={thirdPartyInfo?.firstName || ""}
+                      onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, firstName: e.target.value })}
+                      style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                      Last Name <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Doe"
+                      value={thirdPartyInfo?.lastName || ""}
+                      onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, lastName: e.target.value })}
+                      style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Email Address <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="passenger@example.com"
+                    value={thirdPartyInfo?.email || ""}
+                    onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, email: e.target.value })}
+                    style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Mobile Phone Number <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <PhoneInput
+                    placeholder="Enter mobile phone number"
+                    value={thirdPartyInfo?.phone || ""}
+                    onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
+                    className="rounded-[10px] text-[13px] bg-white"
+                    style={{ width: '100%', height: '42px', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                    Company / Agency Name <span style={{ fontSize: '10px', fontWeight: 500, color: '#94a3b8' }}>(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Travel Agency / Corporate Client"
+                    value={thirdPartyInfo?.company || ""}
+                    onChange={(e: any) => setThirdPartyInfo({ ...thirdPartyInfo, company: e.target.value })}
+                    style={{ width: '100%', height: '42px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', background: 'white', outline: 'none' }}
+                  />
+                </div>
               </div>
             )}
           </div>
