@@ -505,10 +505,36 @@ function RoutingMachine({
         return L.layerGroup([track, line]);
       },
       createMarker: (() => null) as any,
-      router: L.Routing.osrmv1({
-        serviceUrl: (process.env.NEXT_PUBLIC_GIS_API_URL || "http://localhost:4000") + "/api/v1/gis/osrm/route/v1",
-        profile: "driving",
-      }),
+      router: (() => {
+        const primaryUrl = (process.env.NEXT_PUBLIC_GIS_API_URL || "http://localhost:4000") + "/api/v1/gis/osrm/route/v1";
+        const fallbackUrl = "https://router.project-osrm.org/route/v1";
+
+        const primaryRouter = L.Routing.osrmv1({
+          serviceUrl: primaryUrl,
+          profile: "driving",
+          timeout: 2000,
+        });
+
+        const fallbackRouter = L.Routing.osrmv1({
+          serviceUrl: fallbackUrl,
+          profile: "driving",
+          timeout: 8000,
+        });
+
+        return {
+          route: function (waypoints: any, callback: any, context: any, options: any) {
+            (primaryRouter as any).route(waypoints, (...args: any[]) => {
+              const err = args[0] instanceof Error ? args[0] : null;
+              const routes = Array.isArray(args[0]) ? args[0] : args[1];
+              if (!err && Array.isArray(routes) && routes.length > 0) {
+                callback.call(context, null, routes);
+              } else {
+                (fallbackRouter as any).route(waypoints, callback, context, options);
+              }
+            }, context, options);
+          }
+        };
+      })(),
       show: false,
       fitSelectedRoutes: false,
       addWaypoints: false,
