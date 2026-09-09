@@ -11,7 +11,7 @@ export function createClient() {
       auth: {
         // @ts-ignore: Next.js / Supabase experimental flag
         experimental: {
-          passkeys: true
+          passkey: true
         }
       }
     }

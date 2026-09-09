@@ -20,6 +20,7 @@ import { formatPhone } from "@/lib/formatPhone"
 import { PhoneInput } from "@transhola/ui"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_mock');
+const BOOKING_API_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://localhost:8000';
 
 // ─── Vehicle SVG Icons (Uber-style silhouettes) ────────────────────────────────
 function SedanIcon({ color = "#94a3b8", size = 32 }: { color?: string; size?: number }) {
@@ -161,16 +162,22 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           multiDayStore: bookingDetails?.multiDayStore
         };
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/calculate`, {
+        const res = await fetch(`${BOOKING_API_URL}/calculate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${session?.access_token || 'BYPASS_AUTH'}`
           },
           body: JSON.stringify(payload)
+        }).catch((fetchErr) => {
+          console.warn("[QuotationPanel] Network error reaching calculate endpoint:", fetchErr);
+          return null;
         });
 
-        if (!res.ok) throw new Error("Backend calculate failed");
+        if (!res || !res.ok) {
+          console.warn(`[QuotationPanel] Calculate returned non-ok status: ${res?.status}`);
+          return;
+        }
 
         const data = await res.json();
         const returnedOptions = data.data?.options || [];
@@ -252,7 +259,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "BYPASS_AUTH";
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/quotation`, {
+      const res = await fetch(`${BOOKING_API_URL}/quotation`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -728,7 +735,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
+        const res = await fetch(`${BOOKING_API_URL}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -765,7 +772,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
           throw new Error("Authentication required. Please sign in to complete booking.");
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
+        const res = await fetch(`${BOOKING_API_URL}/checkout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1022,7 +1029,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
           return;
         }
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/payment-methods`, {
+        const res = await fetch(`${BOOKING_API_URL}/payment-methods`, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "x-user-id": userId,
@@ -1102,7 +1109,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
         throw new Error("Authentication required. Please sign in to submit quotation.");
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/checkout`, {
+      const res = await fetch(`${BOOKING_API_URL}/checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1357,7 +1364,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token || 'BYPASS_AUTH';
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://api.transhola.com:8000'}/create-payment-intent`, {
+        const res = await fetch(`${BOOKING_API_URL}/create-payment-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
