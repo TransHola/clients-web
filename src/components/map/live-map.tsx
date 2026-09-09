@@ -7,19 +7,9 @@ import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import "leaflet-routing-machine"
 
+const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY ? `?api_key=${process.env.NEXT_PUBLIC_CARTO_API_KEY}` : ""
+
 const MAP_LAYERS = {
-  light: {
-    name: "Clean Light",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    maxZoom: 21,
-    attribution: "&copy; CARTO"
-  },
-  dark: {
-    name: "Dark Mode",
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    maxZoom: 21,
-    attribution: "&copy; CARTO"
-  },
   street: {
     name: "Google 3D Street",
     url: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
@@ -31,6 +21,22 @@ const MAP_LAYERS = {
     url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     maxZoom: 22,
     attribution: "Map data © Google"
+  },
+  light: {
+    name: "Clean Light",
+    url: cartoKey 
+      ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${cartoKey}`
+      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    attribution: cartoKey ? "&copy; CARTO" : "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>"
+  },
+  dark: {
+    name: "Dark Mode",
+    url: cartoKey
+      ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${cartoKey}`
+      : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 16,
+    attribution: cartoKey ? "&copy; CARTO" : "Tiles &copy; Esri"
   }
 }
 
@@ -637,7 +643,7 @@ export function LiveMap({
   const [liveOneWayDistance, setLiveOneWayDistance] = React.useState<number | null>(null)
   const [savedRoutes, setSavedRoutes] = React.useState<SavedRoute[]>([])
   const [showSaved, setShowSaved] = React.useState(false)
-  const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("light")
+  const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("street")
   const [showLayerMenu, setShowLayerMenu] = React.useState(false)
 
   // AI Smart Score: 0–100. Uses time/km efficiency relative to a naive average speed baseline.
