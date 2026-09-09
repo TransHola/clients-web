@@ -37,24 +37,39 @@ export function getRecentLocations(): LocationResult[] {
 
 // ─── Smart dedup + relevance ranking ─────────────────────────────────────────
 function rankResults(results: LocationResult[], query: string): LocationResult[] {
-  const q = query.toLowerCase().trim()
+  if (!Array.isArray(results)) return []
+  const q = (query || "").toLowerCase().trim()
   const seen = new Set<string>()
 
   return results
     .filter((r) => {
-      const key = r.address.toLowerCase()
+      if (!r) return false
+      const addr = (r.address || r.name || (r as any).displayName || "").trim()
+      if (!addr) return false
+      const key = addr.toLowerCase()
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
     .map((r) => {
-      const name = (r.name || "").toLowerCase()
-      const addr = r.address.toLowerCase()
+      const addr = (r.address || r.name || (r as any).displayName || "").trim()
+      const name = (r.name || addr.split(",")[0] || addr).trim()
+      const coord = r.coordinate || { lat: (r as any).lat || 0, lon: (r as any).lon || 0 }
+      const qLower = q
+      const nameLower = name.toLowerCase()
+      const addrLower = addr.toLowerCase()
       let score = 0
-      if (name === q || addr === q) score = 100
-      else if (name.startsWith(q) || addr.startsWith(q)) score = 80
-      else if (name.includes(q) || addr.includes(q)) score = 60
-      return { ...r, _score: score }
+      if (nameLower === qLower || addrLower === qLower) score = 100
+      else if (nameLower.startsWith(qLower) || addrLower.startsWith(qLower)) score = 80
+      else if (nameLower.includes(qLower) || addrLower.includes(qLower)) score = 60
+      else score = 40
+      return { 
+        ...r, 
+        address: addr, 
+        name, 
+        coordinate: coord, 
+        _score: score 
+      }
     })
     .sort((a: any, b: any) => b._score - a._score)
     .slice(0, 8)
