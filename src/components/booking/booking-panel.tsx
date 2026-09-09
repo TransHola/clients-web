@@ -103,7 +103,7 @@ function getDayDifferenceStr(startDateStr: string, endDateStr: string): string {
   }
 }
 
-function TimePickerSelect({ value, onChange, style, disabled, minTime, prefix }: { value: string, onChange: (val: string) => void, style?: React.CSSProperties, disabled?: boolean, minTime?: string, prefix?: string }) {
+function TimePickerSelect({ value, onChange, style, disabled, minTime, prefix, placeholder = "Select time" }: { value: string, onChange: (val: string) => void, style?: React.CSSProperties, disabled?: boolean, minTime?: string, prefix?: string, placeholder?: string }) {
   const options = React.useMemo(() => {
     const times = []
     for (let h = 0; h < 24; h++) {
@@ -123,16 +123,18 @@ function TimePickerSelect({ value, onChange, style, disabled, minTime, prefix }:
 
   return (
     <Select value={value} onValueChange={(val) => onChange(val || "")} disabled={disabled}>
-      <SelectTrigger style={style}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Clock style={{ width: '16px', height: '16px', marginRight: '8px', color: value ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {prefix && <span style={{ color: '#94a3b8', fontSize: '12px' }}>{prefix}</span>}
-            {value ? formatTimeStr(value) : <SelectValue placeholder="Select time…" />}
+      <SelectTrigger style={{ ...style, width: '100%', minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden', flex: 1 }}>
+          <Clock style={{ width: '15px', height: '15px', marginRight: '6px', color: value ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, fontSize: '13px' }}>
+            {prefix && <span style={{ color: '#94a3b8', fontSize: '11px', flexShrink: 0 }}>{prefix}</span>}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {value ? formatTimeStr(value) : <SelectValue placeholder={placeholder} />}
+            </span>
           </span>
         </div>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent style={{ zIndex: 99999 }}>
         {options.filter(t => !(minTime && t.val < minTime)).map(t => (
           <SelectItem key={t.val} value={t.val}>
             {t.label}
@@ -1923,22 +1925,28 @@ export function BookingPanel({
               {serviceMode === "scheduled" && (
                 <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px' }}>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: tripType === 'one-way' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '10px' }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: tripType === 'one-way' ? 'minmax(0, 115px) minmax(0, 1.35fr) minmax(0, 1.15fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', 
+                    gap: '10px',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}>
                     {/* ── Redesigned Passenger / Shuttle Vehicles Field ── */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '5px' }}>
                         {tripType === 'shuttle' ? 'Vehicles' : 'Passengers'}
                       </label>
                       <div style={{
-                        width: '100%', height: '42px', padding: '0 6px 0 12px', borderRadius: '10px',
+                        width: '100%', minWidth: 0, height: '42px', padding: '0 4px 0 8px', borderRadius: '10px',
                         border: '1.5px solid #cbd5e1', background: 'white', boxSizing: 'border-box',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
                           {tripType === 'shuttle' ? (
-                            <Car style={{ width: '14px', height: '14px', color: '#64748b', marginRight: '6px', flexShrink: 0 }} />
+                            <Car style={{ width: '14px', height: '14px', color: '#64748b', marginRight: '5px', flexShrink: 0 }} />
                           ) : (
-                            <Users style={{ width: '14px', height: '14px', color: '#64748b', marginRight: '6px', flexShrink: 0 }} />
+                            <Users style={{ width: '14px', height: '14px', color: '#64748b', marginRight: '5px', flexShrink: 0 }} />
                           )}
                           <input className="no-spinner"
                             type="number" min={1}
@@ -1964,10 +1972,10 @@ export function BookingPanel({
                                 setPassengers(v); setPassengerInput(String(v));
                               }
                             }}
-                            style={{ width: '35px', border: 'none', outline: 'none', fontSize: '15px', fontWeight: 700, color: 'inherit', background: 'transparent', textAlign: 'center' }}
+                            style={{ width: '32px', border: 'none', outline: 'none', fontSize: '14px', fontWeight: 700, color: 'inherit', background: 'transparent', textAlign: 'center' }}
                           />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
                           <button
                             onClick={() => {
                               if (tripType === 'shuttle') {
@@ -1976,7 +1984,7 @@ export function BookingPanel({
                                 const n = Math.max(1, passengers - 1); setPassengers(n); setPassengerInput(String(n));
                               }
                             }}
-                            style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#f1f5f9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569', fontSize: '16px', lineHeight: 1, fontWeight: 400 }}
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#f1f5f9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569', fontSize: '15px', lineHeight: 1, fontWeight: 400 }}
                           >−</button>
                           <button
                             onClick={() => {
@@ -1986,31 +1994,31 @@ export function BookingPanel({
                                 const n = Math.min(999, passengers + 1); setPassengers(n); setPassengerInput(String(n));
                               }
                             }}
-                            style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#f1f5f9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569', fontSize: '16px', lineHeight: 1, fontWeight: 400 }}
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#f1f5f9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569', fontSize: '15px', lineHeight: 1, fontWeight: 400 }}
                           >+</button>
                         </div>
                       </div>
                     </div>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '5px' }}>
-                        {(!showReturn && !isShuttle) ? 'Start Date' : 'Dates (Select all that apply)'}
+                        {(!showReturn && !isShuttle) ? 'Start Date' : 'Dates'}
                       </label>
-                      <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative', minWidth: 0 }}>
                         <Popover>
                           <PopoverTrigger
                             style={{
-                              width: '100%', height: '42px', padding: '0 36px 0 12px', borderRadius: '10px',
+                              width: '100%', minWidth: 0, height: '42px', padding: '0 26px 0 10px', borderRadius: '10px',
                               border: missingFields.includes('date') ? '1.5px solid #ef4444' : `1.5px solid ${startDate ? '#2563eb' : '#cbd5e1'}`, fontSize: '13px',
                               fontWeight: 700, background: 'white', boxSizing: 'border-box', color: startDate ? '#0f172a' : '#94a3b8',
                               display: 'flex', alignItems: 'center', justifyContent: 'flex-start', cursor: 'pointer', outline: 'none',
                               overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
                             }}
                           >
-                            <CalendarDays style={{ width: '16px', height: '16px', marginRight: '8px', color: startDate ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <CalendarDays style={{ width: '15px', height: '15px', marginRight: '6px', color: startDate ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                               {(!showReturn && !isShuttle)
-                                ? ((multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? format(parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate), 'PPP') : <span>Pick a date</span>)
-                                : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'PPP') : multiDayStore.length > 1 ? `${multiDayStore.length} day(s) selected` : <span>Pick dates</span>)}
+                                ? ((multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate) ? format(parseISO(multiDayStore.length > 0 ? multiDayStore[activeDayIdx]?.dateStr : startDate), 'MMM d, yyyy') : <span>Pick date</span>)
+                                : (multiDayStore.length === 1 ? format(parseISO(multiDayStore[0].dateStr), 'MMM d, yyyy') : multiDayStore.length > 1 ? `${multiDayStore.length} days` : <span>Pick dates</span>)}
                             </span>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 99999 }}>
@@ -2127,7 +2135,7 @@ export function BookingPanel({
                               setMultiDayStore([]);
                               if (activeDayIdx > 0) setActiveDayIdx(0);
                             }}
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             title="Clear date"
                           >
                             <X style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
@@ -2136,7 +2144,7 @@ export function BookingPanel({
                       </div>
                     </div>
                     {tripType === 'one-way' && (
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         <label style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                           <span>Start Time</span>
                         </label>
@@ -2146,7 +2154,6 @@ export function BookingPanel({
                           const minTimeBound = (startDate === today && today !== '') ? currentLocalTime : undefined;
                           return (
                             <TimePickerSelect
-                              prefix="Start"
                               value={startTime}
                               onChange={(val) => {
                                 setStartTime(val);
@@ -2154,7 +2161,8 @@ export function BookingPanel({
                               }}
                               minTime={minTimeBound}
                               disabled={!startDate}
-                              style={{ width: '100%', height: '42px', padding: '0 10px', borderRadius: '10px', border: missingFields.includes('start time') ? '1.5px solid #ef4444' : `1.5px solid ${startTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: startDate ? 'white' : '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: startDate ? 'pointer' : 'not-allowed', opacity: startDate ? 1 : 0.5 }}
+                              placeholder="Select time"
+                              style={{ width: '100%', minWidth: 0, height: '42px', padding: '0 8px', borderRadius: '10px', border: missingFields.includes('start time') ? '1.5px solid #ef4444' : `1.5px solid ${startTime ? '#2563eb' : '#e2e8f0'}`, fontSize: '13px', fontWeight: 600, background: startDate ? 'white' : '#f8fafc', boxSizing: 'border-box', color: '#0f172a', cursor: startDate ? 'pointer' : 'not-allowed', opacity: startDate ? 1 : 0.5 }}
                             />
                           );
                         })()}
