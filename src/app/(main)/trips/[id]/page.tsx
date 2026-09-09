@@ -366,20 +366,24 @@ export default function BookingDetailsProfile() {
             status: data.status,
             customerName: details.contact?.firstName ? `${details.contact.firstName} ${details.contact.lastName}` : fallbackName,
             price: data.price || 0,
+            currency: details.currency || (data.currency || 'EUR'),
+            currencySymbol: details.currencySymbol || details.option?.currencySymbol || (details.currency === 'EUR' ? '€' : '$'),
+            countryCode: details.countryCode || 'ES',
+            option: details.option,
             route: {
-               pickup: data.pickup_location || "Unknown",
-               destination: data.dropoff_location || "Unknown",
+               pickup: data.pickup_location || details.pickup?.address || details.multiDayStore?.[0]?.pickupValue || "Unknown",
+               destination: data.dropoff_location || details.dropoff?.address || details.multiDayStore?.[0]?.dropoffValue || "Unknown",
                pickupLoc: {
-                  lat: details.pickup?.coordinate?.lat ?? details.pickup?.lat ?? 38.9531,
-                  lng: details.pickup?.coordinate?.lon ?? details.pickup?.coordinate?.lng ?? details.pickup?.lng ?? details.pickup?.lon ?? -77.4565
+                  lat: details.pickup?.coordinate?.lat ?? details.multiDayStore?.[0]?.pickupLoc?.coordinate?.lat ?? details.pickup?.lat ?? 36.7137,
+                  lng: details.pickup?.coordinate?.lon ?? details.pickup?.coordinate?.lng ?? details.multiDayStore?.[0]?.pickupLoc?.coordinate?.lon ?? details.pickup?.lng ?? -4.4265
                },
                dropoffLoc: {
-                  lat: details.dropoff?.coordinate?.lat ?? details.dropoff?.lat ?? 40.0384,
-                  lng: details.dropoff?.coordinate?.lon ?? details.dropoff?.coordinate?.lng ?? details.dropoff?.lng ?? details.dropoff?.lon ?? -76.1032
+                  lat: details.dropoff?.coordinate?.lat ?? details.multiDayStore?.[0]?.dropoffLoc?.coordinate?.lat ?? details.dropoff?.lat ?? 36.7210,
+                  lng: details.dropoff?.coordinate?.lon ?? details.dropoff?.coordinate?.lng ?? details.multiDayStore?.[0]?.dropoffLoc?.coordinate?.lon ?? details.dropoff?.lng ?? -4.4216
                },
-               distance: details.distance ? (typeof details.distance === 'number' ? `${details.distance} mi` : details.distance) : "142 mi",
-               duration: typeof details.duration === 'number' ? (Math.floor(details.duration / 3600) > 0 ? `${Math.floor(details.duration / 3600)}h ${Math.floor((details.duration % 3600) / 60)}m` : `${Math.floor((details.duration % 3600) / 60)} min`) : (details.duration || "2h 45m"),
-               polyline: details.routePolyline ? [] : null
+               distance: details.distance ? (typeof details.distance === 'number' ? `${details.distance} km` : details.distance) : "153.3 km",
+               duration: typeof details.duration === 'number' ? (Math.floor(details.duration / 3600) > 0 ? `${Math.floor(details.duration / 3600)}h ${Math.floor((details.duration % 3600) / 60)}m` : `${Math.floor((details.duration % 3600) / 60)} min`) : (details.duration || "2h 8m"),
+               polyline: details.routePolyline || details.multiDayStore?.[0]?.routePolyline || null
             },
             schedule: {
                start: data.pickup_date || new Date().toISOString(),
@@ -388,9 +392,9 @@ export default function BookingDetailsProfile() {
                actualEnd: data.completed_at
             },
             vehicles: details.option?.vehicles?.reduce((acc: number, v: any) => acc + v.count, 0) || data.vehicle_count || 1,
-            totalPax: details.passengers || 1,
-            vehicleType: details.option?.title || data.vehicle_type || "Standard",
-            activityType: details.tripType || "One Way",
+            totalPax: details.passengers || details.option?.totalSeats || 1,
+            vehicleType: details.option?.vehicles?.[0]?.type || details.option?.label || data.vehicle_type || "Van",
+            activityType: details.tripType || "Multi-Day",
             contact: details.contact || {
                firstName: "Guest",
                lastName: "User",
@@ -500,8 +504,8 @@ export default function BookingDetailsProfile() {
          const active = dbVehicles.filter(v => v.status !== 'archived');
          setAvailableVehicles(active);
          if (data) {
-            const assignedVehicle = data.vehicle_id ? dbVehicles.find(v => String(v.id) === String(data.vehicle_id)) : active[0];
-            setPrimaryVehicle(assignedVehicle || active[0] || null);
+            const assignedVehicle = data.vehicle_id ? dbVehicles.find(v => String(v.id) === String(data.vehicle_id)) : null;
+            setPrimaryVehicle(assignedVehicle || null);
          }
       }
 
@@ -510,8 +514,8 @@ export default function BookingDetailsProfile() {
          const active = dbDrivers.filter(d => d.status !== 'archived');
          setAvailableDrivers(active);
          if (data) {
-            const assignedDriver = data.driver_id ? dbDrivers.find(d => String(d.id) === String(data.driver_id)) : active[0];
-            setPrimaryDriver(assignedDriver || active[0] || null);
+            const assignedDriver = data.driver_id ? dbDrivers.find(d => String(d.id) === String(data.driver_id)) : null;
+            setPrimaryDriver(assignedDriver || null);
          }
       }
 
@@ -532,14 +536,15 @@ export default function BookingDetailsProfile() {
       fetchBooking(); // Refresh the log history to show the new signature
    }
 
-   const isMultiDay = booking?.multiDayStore && booking.multiDayStore.length > 1;
-   const activeRouteData = isMultiDay ? booking.multiDayStore[activeDayIdx] : null;
+   const isMultiDay = Boolean(booking?.multiDayStore && booking.multiDayStore.length > 0);
+   const activeRouteData = isMultiDay ? booking.multiDayStore[activeDayIdx] || booking.multiDayStore[0] : null;
 
-   const activePolyline = activeRouteData?.routePolyline ? [] : booking?.route?.polyline;
-   const activePickupLoc = activeRouteData?.pickupLoc?.coordinate || booking?.route?.pickupLoc;
-   const activeDropoffLoc = activeRouteData?.dropoffLoc?.coordinate || booking?.route?.dropoffLoc;
-   const activePickupName = activeRouteData?.pickupValue || booking?.route?.pickup;
-   const activeDropoffName = activeRouteData?.dropoffValue || booking?.route?.destination;
+   const activePolyline = activeRouteData?.routePolyline || booking?.route?.polyline;
+   const activePickupLoc = activeRouteData?.pickupLoc?.coordinate || activeRouteData?.pickupLoc || booking?.route?.pickupLoc;
+   const activeDropoffLoc = activeRouteData?.dropoffLoc?.coordinate || activeRouteData?.dropoffLoc || booking?.route?.dropoffLoc;
+   const activePickupName = activeRouteData?.pickupValue || activeRouteData?.pickup?.address || booking?.route?.pickup;
+   const activeDropoffName = activeRouteData?.dropoffValue || activeRouteData?.dropoff?.address || booking?.route?.destination;
+   const activeStops = activeRouteData?.stops || [];
 
    // Computed pseudo-dynamic utilization metrics for assets based on the booking ID.
    const bookingIdStr = String(booking?.id || "default");
@@ -600,12 +605,12 @@ export default function BookingDetailsProfile() {
                      </div>
                   </div>
                   <div className="flex items-center gap-3">
-                     <div className="text-right mr-4">
-                        <p className="text-xs text-muted-foreground uppercase tracking-widest font-black">Total Price</p>
-                        <p className="text-2xl font-black text-foreground">
-                           {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(booking.price)}
-                        </p>
-                     </div>
+                      <div className="text-right mr-4">
+                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-black">Total Price</p>
+                         <p className="text-2xl font-black text-foreground">
+                            {new Intl.NumberFormat("en-US", { style: "currency", currency: booking.currency || "EUR" }).format(booking.price)}
+                         </p>
+                      </div>
                   </div>
                </div>
 
@@ -785,8 +790,10 @@ export default function BookingDetailsProfile() {
                                        <LiveMapWrapper
                                           pickup={{ coordinate: { lat: activePickupLoc.lat, lon: activePickupLoc.lng || activePickupLoc.lon }, name: activePickupName }}
                                           dropoff={{ coordinate: { lat: activeDropoffLoc.lat, lon: activeDropoffLoc.lng || activeDropoffLoc.lon }, name: activeDropoffName }}
+                                          stops={activeStops}
                                           tripType={booking?.activityType?.toLowerCase() || 'shuttle'}
                                           pinsLocked={true}
+                                          countryCode={booking?.countryCode || 'ES'}
                                        />
                                     </div>
                                     <div className="absolute inset-0 z-20 bg-background/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center">
@@ -807,8 +814,7 @@ export default function BookingDetailsProfile() {
                                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                                              <div>
                                                 <Badge variant="outline" className="text-[10px] font-black uppercase text-emerald-600 border-emerald-200 bg-emerald-50 mb-1.5 px-2">Pickup</Badge>
-                                                <h3 className="font-bold text-lg leading-tight">{activePickupName}</h3>
-                                                <p className="text-sm text-muted-foreground mt-1">123 Union Avenue, Central Station</p>
+                                                <h3 className="font-bold text-base leading-tight">{activePickupName}</h3>
                                              </div>
                                              <div className="text-left sm:text-right bg-muted/30 p-3 rounded-lg border flex-shrink-0">
                                                 <div className="flex items-center sm:justify-end gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
@@ -824,14 +830,29 @@ export default function BookingDetailsProfile() {
                                           </div>
                                        </div>
 
+                                       {/* Intermediate Stops Nodes */}
+                                       {activeStops.map((stop: any, sIdx: number) => (
+                                          <div key={stop.id || sIdx} className="relative pl-6">
+                                             <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full bg-background border-2 border-indigo-500 z-10" />
+                                             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                <div>
+                                                   <Badge variant="outline" className="text-[10px] font-black uppercase text-indigo-600 border-indigo-200 bg-indigo-50 mb-1.5 px-2">
+                                                      Stop {sIdx + 1}
+                                                   </Badge>
+                                                   <h3 className="font-bold text-sm leading-tight">{stop.name || stop.address}</h3>
+                                                   <p className="text-xs text-muted-foreground mt-1">Wait time: {stop.stopDurationMin || 1} min</p>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       ))}
+
                                        {/* Destination Node */}
                                        <div className="relative pl-6">
                                           <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full bg-background border-2 border-primary z-10" />
                                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                                              <div>
                                                 <Badge variant="outline" className="text-[10px] font-black uppercase text-primary border-primary/20 bg-primary/10 mb-1.5 px-2">Dropoff</Badge>
-                                                <h3 className="font-bold text-lg leading-tight">{activeDropoffName}</h3>
-                                                <p className="text-sm text-muted-foreground mt-1">456 Main Street, Conference Center</p>
+                                                <h3 className="font-bold text-base leading-tight">{activeDropoffName}</h3>
                                              </div>
                                              <div className="text-left sm:text-right bg-muted/30 p-3 rounded-lg border flex-shrink-0">
                                                 <div className="flex items-center sm:justify-end gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
@@ -926,8 +947,10 @@ export default function BookingDetailsProfile() {
                                     <LiveMapWrapper
                                        pickup={{ coordinate: { lat: activePickupLoc.lat, lon: activePickupLoc.lng || activePickupLoc.lon }, name: activePickupName }}
                                        dropoff={{ coordinate: { lat: activeDropoffLoc.lat, lon: activeDropoffLoc.lng || activeDropoffLoc.lon }, name: activeDropoffName }}
+                                       stops={activeStops}
                                        tripType={booking?.activityType?.toLowerCase() || 'shuttle'}
                                        pinsLocked={true}
+                                       countryCode={booking?.countryCode || 'ES'}
                                     />
                                  </div>
 
@@ -1043,7 +1066,9 @@ export default function BookingDetailsProfile() {
                               <CardHeader className="bg-muted/30 border-b pb-4">
                                  <div className="flex items-center justify-between">
                                     <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-primary" /> Assignments</CardTitle>
-                                    <Badge variant="outline" className="bg-background">{totalAssetsAssigned} of {requiredAssetsCount} Assigned</Badge>
+                                    <Badge variant="outline" className="bg-background">
+                                       {primaryVehicle ? `${totalAssetsAssigned} of ${requiredAssetsCount} Assigned` : 'Pending Dispatch'}
+                                    </Badge>
                                  </div>
                                  <CardDescription className="pt-2">Resources allocated to fulfill this booking request.</CardDescription>
                               </CardHeader>
@@ -1051,10 +1076,13 @@ export default function BookingDetailsProfile() {
                                  {/* Vehicle Block */}
                                  <div className="p-3 border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-colors group cursor-pointer relative">
                                     <div className="flex items-center justify-between mb-2">
-                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Primary Vehicle</p>
+                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">
+                                          {primaryVehicle ? 'Primary Vehicle' : 'Booked Fleet Category'}
+                                       </p>
                                        <div className="flex items-center gap-2">
-                                          <Badge variant="secondary" className="text-[9px] px-1.5 border">{primaryVehicle?.license_plate || 'Assigned'}</Badge>
-
+                                          <Badge variant={primaryVehicle ? "secondary" : "outline"} className="text-[9px] px-1.5 border">
+                                             {primaryVehicle?.license_plate || 'Reserved Fleet'}
+                                          </Badge>
                                        </div>
                                     </div>
                                     <div className="flex items-start justify-between">
@@ -1063,13 +1091,19 @@ export default function BookingDetailsProfile() {
                                              <Bus className="h-5 w-5" />
                                           </div>
                                           <div>
-                                             <p className="font-bold text-sm">{primaryVehicle?.name || `${primaryVehicle?.make || 'Unknown'} ${primaryVehicle?.model || 'Vehicle'}`}</p>
-                                             <p className="text-xs text-muted-foreground">{primaryVehicle?.type || 'Standard'} • {primaryVehicle?.pax_capacity || 0} Pax</p>
+                                             <p className="font-bold text-sm">
+                                                {primaryVehicle?.name || booking?.option?.label || `${booking?.vehicles || 1} × ${booking?.vehicleType || 'Van'}`}
+                                             </p>
+                                             <p className="text-xs text-muted-foreground">
+                                                {primaryVehicle?.type || booking?.vehicleType || 'Van'} • {primaryVehicle?.pax_capacity || booking?.totalPax || 0} Pax Capacity
+                                             </p>
                                           </div>
                                        </div>
                                        <div className="text-right">
-                                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wider mb-0.5">Utilization</p>
-                                          <Badge variant="outline" className={`${vehicleUtilClass} text-xs px-1.5 py-0`}>{vehicleUtilization}% wtd</Badge>
+                                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wider mb-0.5">Operator</p>
+                                          <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                             {booking?.option?.serviceCategory || 'Costa del Sol Transportes SL'}
+                                          </Badge>
                                        </div>
                                     </div>
                                  </div>
@@ -1077,10 +1111,13 @@ export default function BookingDetailsProfile() {
                                  {/* Driver Block */}
                                  <div className="p-3 border rounded-xl hover:border-emerald-500/50 hover:bg-emerald-50/50 transition-colors group cursor-pointer relative">
                                     <div className="flex items-center justify-between mb-2">
-                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Primary Driver</p>
+                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">
+                                          {primaryDriver ? 'Primary Driver' : 'Driver Assignment'}
+                                       </p>
                                        <div className="flex items-center gap-2">
-                                          <Badge variant="outline" className="text-[9px] px-1.5 border-emerald-200 text-emerald-700 bg-emerald-50">Assigned</Badge>
-
+                                          <Badge variant="outline" className={`text-[9px] px-1.5 border ${primaryDriver ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>
+                                             {primaryDriver ? 'Assigned' : 'Awaiting Assignment'}
+                                          </Badge>
                                        </div>
                                     </div>
                                     <div className="flex items-start justify-between">
@@ -1089,17 +1126,22 @@ export default function BookingDetailsProfile() {
                                              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${primaryDriver?.first_name || 'Driver'}`} alt="Avatar" className="object-cover h-full w-full" />
                                           </div>
                                           <div>
-                                             <p className="font-bold text-sm">{primaryDriver?.first_name || 'Pending'} {primaryDriver?.last_name || 'Assignment'}</p>
-                                             <p className="text-xs text-muted-foreground">{primaryDriver?.license_class || 'CDL'} • {primaryDriver?.phone || 'No Phone'}</p>
+                                             <p className="font-bold text-sm">
+                                                {primaryDriver ? `${primaryDriver.first_name} ${primaryDriver.last_name}` : 'Driver to be dispatched'}
+                                             </p>
+                                             <p className="text-xs text-muted-foreground">
+                                                {primaryDriver ? `${primaryDriver.license_class || 'CDL'} • ${primaryDriver.phone || 'No Phone'}` : 'Partner operator will assign driver prior to departure'}
+                                             </p>
                                           </div>
                                        </div>
-                                       <div className="text-right">
-                                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wider mb-0.5">Utilization</p>
-                                          <Badge variant="outline" className={`${driverUtilClass} text-xs px-1.5 py-0`}>{driverUtilization}% wtd</Badge>
-                                       </div>
+                                       {primaryDriver && (
+                                          <div className="text-right">
+                                             <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wider mb-0.5">Utilization</p>
+                                             <Badge variant="outline" className={`${driverUtilClass} text-xs px-1.5 py-0`}>{driverUtilization}% wtd</Badge>
+                                          </div>
+                                       )}
                                     </div>
                                  </div>
-
 
                                  {/* Secondary Vehicles Block */}
                                  {secondaryVehicles.map((vehicle, idx) => (
