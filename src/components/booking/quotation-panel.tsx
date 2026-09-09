@@ -963,6 +963,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
                   </label>
                   <PhoneInput
                     placeholder="Enter mobile phone number"
+                    defaultCountry={(bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || 'ES').toUpperCase() as any}
                     value={thirdPartyInfo.phone}
                     onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
                     className="rounded-[10px] text-[13px] bg-white"
@@ -1325,6 +1326,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
                   </label>
                   <PhoneInput
                     placeholder="Enter mobile phone number"
+                    defaultCountry={(bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || 'ES').toUpperCase() as any}
                     value={thirdPartyInfo?.phone || ""}
                     onChange={(val: any) => setThirdPartyInfo({ ...thirdPartyInfo, phone: val || "" })}
                     className="rounded-[10px] text-[13px] bg-white"
