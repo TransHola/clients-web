@@ -136,7 +136,7 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
       </div>
 
       {/* Pinned Static Footer containing Totals and Buttons */}
-      <div style={{ flexShrink: 0, background: '#f8fafc', borderTop: '1px solid #e2e8f0', boxShadow: '0 -4px 16px rgba(0,0,0,0.02)' }}>
+      <div style={{ flexShrink: 0, background: '#f8fafc', borderTop: '1px solid #e2e8f0', boxShadow: '0 -4px 16px rgba(0,0,0,0.02)', position: 'relative', zIndex: 40 }}>
         <div style={{ padding: '16px 24px 24px 24px' }}>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#475569', marginBottom: '8px' }}>

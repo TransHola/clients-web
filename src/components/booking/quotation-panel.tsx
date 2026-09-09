@@ -1320,7 +1320,14 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
                 <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '3px solid #f1f5f9', borderTopColor: '#2563eb', animation: 'spin 1s linear infinite' }} />
               </div>
             )}
-            <PaymentElement onReady={() => setIsReady(true)} />
+            <PaymentElement
+              onReady={() => setIsReady(true)}
+              options={{
+                wallets: {
+                  link: 'never'
+                }
+              }}
+            />
 
             <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>

@@ -225,3 +225,16 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Suppress floating Stripe Link button and badges from covering bottom-right totals */
+iframe[name^="__privateStripeMetricsController"],
+.stripe-badge,
+[data-testid="link-floating-button"],
+div[class*="LinkModal"],
+div:has(> iframe[src*="stripe.com"][style*="position: fixed"]),
+iframe[src*="stripe.com"][style*="position: fixed"][style*="bottom"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
