@@ -751,7 +751,7 @@ function FooterPortal({ children }: { children: React.ReactNode }) {
 type PayState = "idle" | "loading" | "success" | "declined" | "error" | "timeout"
 const SAVED_CARDS: any[] = []
 
-function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
+function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
   const [payState, setPayState] = React.useState<PayState>("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
@@ -1070,7 +1070,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "AED", onBack, on
   )
 }
 
-function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
+function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
   const stripe = useStripe();
   const elements = useElements();
   const [payState, setPayState] = React.useState<PayState>("idle");
@@ -1454,7 +1454,7 @@ function CheckoutForm({ option, bookingDetails, currency = "AED", onBack, onConf
   )
 }
 
-export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
+export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
   const [clientSecret, setClientSecret] = React.useState("");
   const [intentType, setIntentType] = React.useState("payment");
 
@@ -1508,7 +1508,7 @@ export function PaymentPanel({ option, bookingDetails, currency = "AED", onBack,
 }
 
 // ─── Confirmation Panel ────────────────────────────────────────────────────────
-function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "AED", onDone, onCancel }: { bookingId?: string; option: VehicleOption; bookingDetails?: any; currency?: string; onDone: (id?: string) => void; onCancel: () => void }) {
+function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "EUR", onDone, onCancel }: { bookingId?: string; option: VehicleOption; bookingDetails?: any; currency?: string; onDone: (id?: string) => void; onCancel: () => void }) {
   const ref = React.useMemo(() => bookingId ? `TRN-${bookingId.substring(0, 8).toUpperCase()}` : `TH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`, [bookingId])
   const [showReceipt, setShowReceipt] = React.useState(false)
 

@@ -1165,14 +1165,14 @@ export default function BookingDetailsProfile() {
                   {/* 5. OPERATIONS & TRACKING TAB (New) */}
                   <TabsContent value="operations" className="mt-6 space-y-6">
                      {isMissed && (
-                        <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                           <div className="h-8 w-8 rounded-full bg-destructive/20 flex items-center justify-center shrink-0">
-                              <AlertTriangle className="h-4 w-4 text-destructive" />
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                           <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                              <Clock className="h-4 w-4 text-amber-600" />
                            </div>
                            <div>
-                              <h4 className="text-sm font-black text-destructive tracking-tight uppercase">Trip Missed & Dispatch Locked</h4>
-                              <p className="text-xs text-destructive/80 mt-1 font-medium leading-relaxed">
-                                 This trip has passed its scheduled start time without being dispatched. Operations are locked. The owner of the trip or a Super Admin must modify the timing before it can be dispatched.
+                              <h4 className="text-sm font-black text-amber-900 tracking-tight uppercase">Chauffeur Dispatch In Progress</h4>
+                              <p className="text-xs text-amber-800/90 mt-1 font-medium leading-relaxed">
+                                 Your booking is confirmed and our operations desk is coordinating chauffeur assignment for your departure. If you require immediate schedule modifications or special assistance, our concierge team is available 24/7.
                               </p>
                            </div>
                         </div>

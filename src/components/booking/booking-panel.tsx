@@ -214,7 +214,7 @@ export function BookingPanel({
   const [editingQuoteRef, setEditingQuoteRef] = React.useState<string | null>(null)
   const [quotationDbId, setQuotationDbId] = React.useState<string | null>(null)
   const [quotePrice, setQuotePrice] = React.useState<number | null>(null)
-  const [quoteCurrency, setQuoteCurrency] = React.useState<string>("AED")
+  const [quoteCurrency, setQuoteCurrency] = React.useState<string>("EUR")
   const [hydratedOption, setHydratedOption] = React.useState<any>(null)
 
   // Advanced Amenities
