@@ -45,7 +45,14 @@ import {
    MessageCircle,
    X,
    Clock,
-   AlertTriangle
+   AlertTriangle,
+   Copy,
+   Check,
+   Share2,
+   Printer,
+   ExternalLink,
+   ArrowUpRight,
+   CheckCircle
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -91,19 +98,13 @@ const CountdownTimer = ({ targetDate, status }: { targetDate: string, status?: s
    if (!isClient || !timeLeft) return <span className="opacity-0">Loading...</span>;
 
    if (timeLeft.isLate) {
-      const isMissed = status === "confirmed" || status === "draft";
-
-      if (isMissed) {
-         return (
-            <span className="font-mono font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded border border-destructive/20 tracking-tight text-[11px]">
-               MISSED
-            </span>
-         );
-      }
-
       return (
-         <span className="font-mono font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded border border-destructive/20 tracking-tight text-[11px]">
-            Late by: {timeLeft.d > 0 && `${timeLeft.d}d `}{timeLeft.h.toString().padStart(2, '0')}h : {timeLeft.m.toString().padStart(2, '0')}m : {timeLeft.s.toString().padStart(2, '0')}s
+         <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 bg-amber-50/80 px-2.5 py-1 rounded-full border border-amber-200/80 text-[11px] shadow-2xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span>Scheduled for earlier today</span>
+            <span className="font-mono text-amber-600/90 font-semibold">
+               ({timeLeft.d > 0 ? `${timeLeft.d}d ` : ''}{timeLeft.h}h {timeLeft.m}m ago)
+            </span>
          </span>
       );
    }
@@ -148,6 +149,23 @@ export default function BookingDetailsProfile() {
    }, [booking?.schedule?.start, bookingStatus]);
 
    const [assetAction, setAssetAction] = useState<{ type: "add" | "replace", resourceType: "vehicle" | "driver" } | null>(null)
+   const [copiedRef, setCopiedRef] = useState(false);
+   const [copiedLink, setCopiedLink] = useState(false);
+
+   const handleCopyRef = () => {
+      if (!booking?.ref) return;
+      navigator.clipboard.writeText(booking.ref);
+      setCopiedRef(true);
+      setTimeout(() => setCopiedRef(false), 2000);
+   };
+
+   const handleShareTrip = () => {
+      if (typeof window !== "undefined") {
+         navigator.clipboard.writeText(window.location.href);
+         setCopiedLink(true);
+         setTimeout(() => setCopiedLink(false), 2000);
+      }
+   };
    const [isAssetSheetOpen, setIsAssetSheetOpen] = useState(false)
    const [secondaryVehicles, setSecondaryVehicles] = useState<any[]>([])
    const [secondaryDrivers, setSecondaryDrivers] = useState<any[]>([])
@@ -572,221 +590,407 @@ export default function BookingDetailsProfile() {
             </div>
          ) : (
             <>
-               {/* 1. HEADER SECTION (Always visible) */}
-               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                     <Button variant="outline" size="icon" onClick={() => router.push("/trips")} className="h-10 w-10 shrink-0 rounded-full">
-                        <ChevronLeft className="h-5 w-5" />
-                     </Button>
-                     <div>
-                        <div className="flex items-center gap-3">
-                           <h1 className="text-2xl font-black tracking-tight">{booking.ref}</h1>
-                           <select
-                              value={bookingStatus}
-                              onChange={(e) => setBookingStatus(e.target.value)}
-                              disabled={isMissed}
-                              className={`uppercase font-black tracking-widest text-[10px] rounded-full px-2 py-0.5 outline-none ${isMissed ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed opacity-80' : 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer hover:bg-emerald-100 border'}`}
-                           >
-                              <option value="draft">Draft</option>
-                              <option value="confirmed">Confirmed</option>
-                              <option value="en_route">En Route/Started</option>
-                              <option value="in_progress">In Progress</option>
-                              <option value="completed">Completed</option>
-                           </select>
+               {/* 1. HERO HEADER SECTION */}
+               <div className="bg-card/80 backdrop-blur-xl border border-border/80 rounded-3xl p-6 sm:p-7 shadow-xs relative overflow-hidden space-y-6">
+                  {/* Decorative background gradient */}
+                  <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-1/3 -mb-8 w-48 h-48 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+
+                  {/* Top Bar: Navigation, Reference, Status & Actions */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+                     <div className="flex items-start sm:items-center gap-4">
+                        <Button
+                           variant="outline"
+                           size="icon"
+                           onClick={() => router.push("/trips")}
+                           className="h-11 w-11 shrink-0 rounded-2xl border-border/80 bg-background/80 shadow-2xs hover:bg-muted/80 transition-all cursor-pointer"
+                        >
+                           <ChevronLeft className="h-5 w-5" />
+                        </Button>
+                        <div className="space-y-1.5">
+                           <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Booking</span>
+                              <div className="flex items-center gap-1.5 bg-muted/60 hover:bg-muted px-2.5 py-1 rounded-xl border border-border/70 transition-colors group">
+                                 <span className="font-mono text-sm font-black tracking-tight text-foreground">{booking.ref}</span>
+                                 <button
+                                    onClick={handleCopyRef}
+                                    title="Copy Reference"
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                 >
+                                    {copiedRef ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" />}
+                                 </button>
+                              </div>
+
+                              {/* Status Pill */}
+                              <div className="flex items-center">
+                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-2xs ${
+                                    bookingStatus === 'completed'
+                                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                                       : bookingStatus === 'in_progress'
+                                       ? 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800'
+                                       : bookingStatus === 'en_route'
+                                       ? 'bg-indigo-50 text-indigo-700 border-indigo-200/80 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800'
+                                       : 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                                 }`}>
+                                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    {bookingStatus.replace('_', ' ')}
+                                 </span>
+                              </div>
+
+                              {/* Optional testing status dropdown */}
+                              <select
+                                 value={bookingStatus}
+                                 onChange={(e) => setBookingStatus(e.target.value)}
+                                 className="text-[10px] font-bold text-muted-foreground bg-transparent border border-border/60 rounded-lg px-2 py-0.5 outline-none hover:border-border cursor-pointer"
+                              >
+                                 <option value="confirmed">Confirmed</option>
+                                 <option value="en_route">En Route</option>
+                                 <option value="in_progress">In Progress</option>
+                                 <option value="completed">Completed</option>
+                                 <option value="draft">Draft</option>
+                              </select>
+                           </div>
+
+                           <p className="text-xs text-muted-foreground font-medium flex flex-wrap items-center gap-2">
+                              <span>Reserved by <strong className="text-foreground font-bold">{booking.customerName}</strong></span>
+                              <span>&bull;</span>
+                              <span className="capitalize font-semibold text-foreground/80">{booking.activityType}</span>
+                              {booking.isThirdParty && booking.thirdPartyInfo && (
+                                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100/70 rounded-md border border-amber-200/70">
+                                    Agency: {booking.thirdPartyInfo.company || `${booking.thirdPartyInfo.firstName} ${booking.thirdPartyInfo.lastName}`}
+                                 </span>
+                              )}
+                           </p>
                         </div>
-                        <p className="text-muted-foreground font-medium mt-1 flex flex-wrap items-center gap-2">
-                           {booking.customerName} &bull; {booking.activityType}
-                           {booking.isThirdParty && booking.thirdPartyInfo && (
-                              <span className="shrink-0 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">
-                                Agency Booking: {booking.thirdPartyInfo.company || `${booking.thirdPartyInfo.firstName} ${booking.thirdPartyInfo.lastName}`}
+                     </div>
+
+                     {/* Price & Action Buttons */}
+                     <div className="flex flex-wrap items-center justify-between lg:justify-end gap-4 border-t lg:border-t-0 pt-4 lg:pt-0 border-border/60">
+                        <div className="text-left lg:text-right">
+                           <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest block">Total Amount</span>
+                           <div className="flex items-baseline gap-2">
+                              <span className="text-3xl font-black text-foreground tracking-tight">
+                                 {new Intl.NumberFormat("en-US", { style: "currency", currency: booking.currency || "EUR" }).format(booking.price)}
                               </span>
-                           )}
-                        </p>
+                              <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">
+                                 Paid in Full
+                              </span>
+                           </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                           <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleShareTrip}
+                              className="rounded-xl font-bold text-xs gap-1.5 h-9 border-border/80 hover:bg-muted cursor-pointer"
+                           >
+                              {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Share2 className="h-3.5 w-3.5" />}
+                              <span>{copiedLink ? "Link Copied" : "Share"}</span>
+                           </Button>
+                           <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.print()}
+                              className="rounded-xl font-bold text-xs gap-1.5 h-9 border-border/80 hover:bg-muted cursor-pointer"
+                           >
+                              <Printer className="h-3.5 w-3.5" />
+                              <span>Itinerary</span>
+                           </Button>
+                           <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => setActiveTab("client_comm")}
+                              className="rounded-xl font-bold text-xs gap-1.5 h-9 shadow-xs bg-primary hover:bg-primary/90 cursor-pointer"
+                           >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              <span>Message Partner</span>
+                           </Button>
+                        </div>
                      </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                      <div className="text-right mr-4">
-                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-black">Total Price</p>
-                         <p className="text-2xl font-black text-foreground">
-                            {new Intl.NumberFormat("en-US", { style: "currency", currency: booking.currency || "EUR" }).format(booking.price)}
-                         </p>
-                      </div>
+
+                  {/* Dynamic Journey Stepper */}
+                  <div className="pt-2 border-t border-border/60">
+                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 relative">
+                        {[
+                           { step: 1, title: "Booked", desc: "Sep 09, 2026", done: true, current: false },
+                           { step: 2, title: "Partner Assigned", desc: "Costa del Sol SL", done: true, current: bookingStatus === 'confirmed' },
+                           { step: 3, title: "Chauffeur En Route", desc: "Prior to pickup", done: ['en_route', 'in_progress', 'completed'].includes(bookingStatus), current: bookingStatus === 'en_route' },
+                           { step: 4, title: "Trip In Progress", desc: "Live tracking", done: ['in_progress', 'completed'].includes(bookingStatus), current: bookingStatus === 'in_progress' },
+                           { step: 5, title: "Completed", desc: "Final arrival", done: bookingStatus === 'completed', current: bookingStatus === 'completed' },
+                        ].map((item, idx) => (
+                           <div key={item.step} className="flex items-center gap-3 p-2.5 rounded-2xl bg-muted/30 border border-border/50">
+                              <div className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-black transition-all ${
+                                 item.done
+                                    ? 'bg-emerald-500 text-white shadow-xs shadow-emerald-500/20'
+                                    : item.current
+                                    ? 'bg-primary text-primary-foreground animate-pulse'
+                                    : 'bg-muted text-muted-foreground border border-border/60'
+                              }`}>
+                                 {item.done ? <Check className="h-4 w-4" /> : item.step}
+                              </div>
+                              <div className="min-w-0">
+                                 <p className="text-xs font-bold text-foreground truncate leading-tight">{item.title}</p>
+                                 <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">{item.desc}</p>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
                   </div>
                </div>
 
-               <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="w-full flex-col">
-                  {/* 3. TABS NAVIGATION */}
-                  <TabsList className="h-auto bg-transparent border-b w-full justify-start rounded-none p-0 gap-6 overflow-x-auto hide-scrollbar">
-                     <TabsTrigger
-                        value="overview"
-                        className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
-                     >
-                        <Sparkles className="h-4 w-4 mr-2" /> Overview
-                     </TabsTrigger>
-                     <TabsTrigger
-                        value="operations"
-                        className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
-                     >
-                        <Activity className="h-4 w-4 mr-2" /> Activity
-                     </TabsTrigger>
-                     <TabsTrigger
-                        value="client_comm"
-                        className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm relative"
-                     >
-                        <Users className="h-4 w-4 mr-2" /> Client & Comm
-                        {hasUnread && (
-                           <span className="absolute top-2 right-0 flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                           </span>
+               {/* 2. MODERN TABS NAVIGATION */}
+               <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="w-full flex-col space-y-6">
+                  <div className="bg-muted/40 p-1.5 rounded-2xl border border-border/80 flex items-center justify-start gap-1 overflow-x-auto hide-scrollbar">
+                     <TabsList className="bg-transparent h-auto p-0 gap-1">
+                        <TabsTrigger
+                           value="overview"
+                           className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
+                        >
+                           <Sparkles className="h-3.5 w-3.5 text-primary" />
+                           <span>Overview</span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                           value="operations"
+                           className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
+                        >
+                           <Activity className="h-3.5 w-3.5 text-blue-500" />
+                           <span>Live Tracking</span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                           value="client_comm"
+                           className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2 relative"
+                        >
+                           <Users className="h-3.5 w-3.5 text-indigo-500" />
+                           <span>Client & Comm</span>
+                           {hasUnread && (
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                           )}
+                        </TabsTrigger>
+                        <TabsTrigger
+                           value="files"
+                           className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
+                        >
+                           <FileText className="h-3.5 w-3.5 text-amber-500" />
+                           <span>Agreements</span>
+                        </TabsTrigger>
+                        {["en_route", "in_progress", "completed"].includes(bookingStatus) && (
+                           <TabsTrigger
+                              value="lost_found"
+                              className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
+                           >
+                              <Search className="h-3.5 w-3.5 text-rose-500" />
+                              <span>Lost & Found</span>
+                           </TabsTrigger>
                         )}
-                     </TabsTrigger>
-                     <TabsTrigger
-                        value="files"
-                        className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
-                     >
-                        <FileText className="h-4 w-4 mr-2" /> Agreements
-                     </TabsTrigger>
-                     {["en_route", "in_progress", "completed"].includes(bookingStatus) && (
+                        {bookingStatus === "completed" && (
+                           <TabsTrigger
+                              value="reviews"
+                              className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
+                           >
+                              <Star className="h-3.5 w-3.5 text-yellow-500" />
+                              <span>Reviews</span>
+                           </TabsTrigger>
+                        )}
                         <TabsTrigger
-                           value="lost_found"
-                           className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
+                           value="history"
+                           className="rounded-xl px-4 py-2.5 font-bold text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all gap-2"
                         >
-                           <Search className="h-4 w-4 mr-2" /> Lost & Found
+                           <History className="h-3.5 w-3.5 text-slate-500" />
+                           <span>Log History</span>
                         </TabsTrigger>
-                     )}
-                     {bookingStatus === "completed" && (
-                        <TabsTrigger
-                           value="reviews"
-                           className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
-                        >
-                           <Star className="h-4 w-4 mr-2" /> Reviews
-                        </TabsTrigger>
-                     )}
-                     <TabsTrigger
-                        value="history"
-                        className="rounded-none border-b-2 border-transparent data-active:border-primary data-active:bg-transparent px-2 py-3 font-bold text-sm"
-                     >
-                        <History className="h-4 w-4 mr-2" /> Log History
-                     </TabsTrigger>
-                  </TabsList>
+                     </TabsList>
+                  </div>
 
-                  {/* 4. OVERVIEW TAB */}
-                  <TabsContent value="overview" className="mt-6 space-y-6">
-                     <div className="grid lg:grid-cols-3 gap-6">
-                        {/* Trip Overview & Status Column */}
-                        <div className="lg:col-span-1 space-y-6">
-                           <Card className="border-2 shadow-sm overflow-hidden">
-                              <CardHeader className="pb-3 border-b bg-muted/30">
-                                 <CardTitle className="flex items-center gap-2 font-black text-lg">
-                                    <Activity className="h-5 w-5 text-primary" />
-                                    Trip Progress & Details
+                  {/* 3. REVAMPED OVERVIEW TAB */}
+                  <TabsContent value="overview" className="mt-0 space-y-6">
+                     <div className="grid lg:grid-cols-12 gap-6">
+                        {/* LEFT COLUMN: Specs, Status, Assigned Fleet (4 cols) */}
+                        <div className="lg:col-span-4 space-y-6">
+                           {/* Status & Departure Countdown Card */}
+                           <Card className="rounded-3xl border border-border/80 shadow-xs overflow-hidden">
+                              <CardHeader className="pb-3 border-b border-border/60 bg-muted/20">
+                                 <CardTitle className="flex items-center gap-2 font-black text-base">
+                                    <Clock className="h-4 w-4 text-primary" />
+                                    Trip Timing & Schedule
                                  </CardTitle>
                               </CardHeader>
-                              <CardContent className="p-5 space-y-6">
-                                 {/* Status Block - Premium Look */}
-                                 <div className="flex flex-col gap-3">
-                                    <div className="flex items-center justify-between">
-                                       <span className="text-[11px] font-black uppercase text-muted-foreground tracking-widest">Current Status</span>
-                                       <Badge variant={bookingStatus === 'completed' ? 'default' : bookingStatus === 'in_progress' ? 'default' : 'secondary'}
-                                          className={`px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${bookingStatus === 'in_progress' ? 'bg-blue-600 hover:bg-blue-600' : bookingStatus === 'completed' ? 'bg-emerald-600 hover:bg-emerald-600' : ''}`}>
-                                          {bookingStatus.replace('_', ' ')}
-                                       </Badge>
-                                    </div>
-                                    <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 shadow-sm relative overflow-hidden">
-                                       <div className={`absolute top-0 left-0 w-1 h-full ${bookingStatus === 'in_progress' ? 'bg-blue-500' : bookingStatus === 'completed' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                       <div className="flex items-start gap-3">
-                                          <Clock className={`h-5 w-5 mt-0.5 ${bookingStatus === 'in_progress' ? 'text-blue-600' : bookingStatus === 'completed' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                                          <div>
-                                             <p className="font-bold text-sm text-slate-800 leading-tight">
-                                                {bookingStatus === 'draft' && 'Draft Saved'}
-                                                {bookingStatus === 'pending' && 'Awaiting Dispatch'}
-                                                {bookingStatus === 'confirmed' && 'Scheduled Trip'}
-                                                {bookingStatus === 'en_route' && 'Driver En Route'}
-                                                {bookingStatus === 'in_progress' && 'Trip Active'}
-                                                {bookingStatus === 'completed' && 'Trip Completed'}
-                                             </p>
-                                             <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                                                {bookingStatus === 'draft' && 'Booking is saved as a draft. Pending finalization.'}
-                                                {bookingStatus === 'pending' && 'Awaiting operator acceptance and dispatch.'}
-                                                {bookingStatus === 'confirmed' && (
-                                                   <div className="flex items-center">
-                                                      <CountdownTimer targetDate={booking.schedule.start} status={bookingStatus} />
-                                                   </div>
-                                                )}
-                                                {bookingStatus === 'en_route' && 'Driver is en route to the pickup location. On schedule.'}
-                                                {bookingStatus === 'in_progress' && `Est. completion by ${new Date(booking.schedule.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-                                                {bookingStatus === 'completed' && `Finished on ${new Date(booking.schedule.end).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
-                                             </div>
-                                          </div>
-                                       </div>
+                              <CardContent className="p-5 space-y-4">
+                                 <div>
+                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest block mb-1.5">Schedule Adherence</span>
+                                    <div className="flex items-center">
+                                       <CountdownTimer targetDate={booking.schedule.start} status={bookingStatus} />
                                     </div>
                                  </div>
 
-                                 {/* Key Details Grid */}
-                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
+                                 {/* Bento Stats Grid */}
+                                 <div className="grid grid-cols-2 gap-3 pt-2">
+                                    <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 space-y-1">
                                        <div className="flex items-center gap-1.5 text-muted-foreground">
                                           <Users className="h-3.5 w-3.5" />
-                                          <span className="text-[10px] font-black uppercase tracking-widest">Passengers</span>
+                                          <span className="text-[10px] font-black uppercase tracking-wider">Passengers</span>
                                        </div>
-                                       <p className="font-bold text-sm text-foreground">{booking.totalPax} Pax</p>
+                                       <p className="text-base font-black text-foreground">{booking.totalPax} Pax</p>
                                     </div>
-                                    <div className="space-y-1.5">
+                                    <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 space-y-1">
                                        <div className="flex items-center gap-1.5 text-muted-foreground">
                                           <CarFront className="h-3.5 w-3.5" />
-                                          <span className="text-[10px] font-black uppercase tracking-widest">Vehicles</span>
+                                          <span className="text-[10px] font-black uppercase tracking-wider">Vehicles</span>
                                        </div>
-                                       <p className="font-bold text-sm text-foreground">{booking.vehicles} x {booking.vehicleType}</p>
+                                       <p className="text-base font-black text-foreground">{booking.vehicles} × {booking.vehicleType}</p>
+                                    </div>
+                                    <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 space-y-1">
+                                       <div className="flex items-center gap-1.5 text-muted-foreground">
+                                          <MapIcon className="h-3.5 w-3.5" />
+                                          <span className="text-[10px] font-black uppercase tracking-wider">Distance</span>
+                                       </div>
+                                       <p className="text-base font-black text-foreground">{booking.route.distance}</p>
+                                    </div>
+                                    <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 space-y-1">
+                                       <div className="flex items-center gap-1.5 text-muted-foreground">
+                                          <Timer className="h-3.5 w-3.5" />
+                                          <span className="text-[10px] font-black uppercase tracking-wider">Est. Duration</span>
+                                       </div>
+                                       <p className="text-base font-black text-foreground">{booking.route.duration}</p>
+                                    </div>
+                                 </div>
+                              </CardContent>
+                           </Card>
+
+                           {/* Partner Operator & Assigned Fleet Showcase */}
+                           <Card className="rounded-3xl border border-border/80 shadow-xs overflow-hidden">
+                              <CardHeader className="pb-3 border-b border-border/60 bg-muted/20">
+                                 <div className="flex items-center justify-between">
+                                    <CardTitle className="flex items-center gap-2 font-black text-base">
+                                       <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                                       Assigned Partner & Fleet
+                                    </CardTitle>
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                       <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                       Verified
+                                    </span>
+                                 </div>
+                              </CardHeader>
+                              <CardContent className="p-5 space-y-4">
+                                 {/* Operator Profile */}
+                                 <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 flex items-center justify-between gap-3">
+                                    <div>
+                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-0.5">Licensed Transport Operator</p>
+                                       <h4 className="text-sm font-black text-foreground">
+                                          {booking?.option?.serviceCategory || 'Costa del Sol Transportes SL'}
+                                       </h4>
+                                       <p className="text-xs text-muted-foreground mt-0.5">Málaga & Costa del Sol Region, Spain</p>
+                                    </div>
+                                    <Button
+                                       variant="ghost"
+                                       size="sm"
+                                       onClick={() => setActiveTab("client_comm")}
+                                       className="h-8 rounded-xl text-xs font-bold gap-1 text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
+                                    >
+                                       <span>Chat</span>
+                                       <ArrowUpRight className="h-3.5 w-3.5" />
+                                    </Button>
+                                 </div>
+
+                                 {/* Reserved Fleet Details */}
+                                 <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Reserved Vehicle Category</p>
+                                       <span className="text-[10px] font-mono font-bold bg-background border px-2 py-0.5 rounded-md">
+                                          {primaryVehicle?.license_plate || `${booking.vehicles} × ${booking.vehicleType}`}
+                                       </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                       <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                          <Bus className="h-5 w-5" />
+                                       </div>
+                                       <div>
+                                          <p className="font-bold text-sm text-foreground">
+                                             {primaryVehicle?.name || `${booking.vehicles} × Executive Passenger Van`}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                             Capacity: {booking.totalPax} Pax &bull; Executive Travel Standard
+                                          </p>
+                                       </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                       {["Air Conditioned", "Luggage Storage", "Clean Interior", "Licensed & Insured"].map((amenity) => (
+                                          <span key={amenity} className="text-[10px] font-semibold text-muted-foreground bg-background/80 px-2 py-0.5 rounded-md border border-border/50">
+                                             {amenity}
+                                          </span>
+                                       ))}
                                     </div>
                                  </div>
 
-                                 <div className="h-px bg-border w-full" />
-
-                                 {/* Service & Client Info */}
-                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                       <div className="flex items-center gap-2 text-muted-foreground">
-                                          <MapIcon className="h-4 w-4" />
-                                          <span className="text-xs font-bold uppercase tracking-wider">Activity Type</span>
-                                       </div>
-                                       <span className="font-bold text-sm text-foreground text-right">{booking.activityType}</span>
+                                 {/* Chauffeur Assignment Status */}
+                                 <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 flex items-center gap-3">
+                                    <div className="h-10 w-10 rounded-xl bg-background border flex items-center justify-center text-muted-foreground shrink-0 overflow-hidden">
+                                       {primaryDriver ? (
+                                          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${primaryDriver.first_name}`} alt="Avatar" className="h-full w-full object-cover" />
+                                       ) : (
+                                          <UserCircle2 className="h-6 w-6 text-muted-foreground/60" />
+                                       )}
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                       <div className="flex items-center gap-2 text-muted-foreground">
-                                          <UserCircle2 className="h-4 w-4" />
-                                          <span className="text-xs font-bold uppercase tracking-wider">Client</span>
+                                    <div>
+                                       <div className="flex items-center gap-2">
+                                          <p className="font-bold text-sm text-foreground">
+                                             {primaryDriver ? `${primaryDriver.first_name} ${primaryDriver.last_name}` : "Professional Chauffeur"}
+                                          </p>
+                                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                             {primaryDriver ? "Assigned" : "Pending Departure"}
+                                          </span>
                                        </div>
-                                       <span className="font-bold text-sm text-foreground text-right">{booking.company !== "Individual Booking" ? booking.company : booking.customerName}</span>
+                                       <p className="text-xs text-muted-foreground mt-0.5">
+                                          {primaryDriver ? `License: ${primaryDriver.license_class || 'CDL'}` : "Operator will dispatch certified driver prior to pickup"}
+                                       </p>
                                     </div>
                                  </div>
                               </CardContent>
                            </Card>
                         </div>
 
-                        {/* Route & Schedule Column */}
-                        <div className="lg:col-span-2 space-y-6">
-                           <Card className="overflow-hidden border-2 shadow-sm">
-                              <CardHeader className="bg-muted/30 border-b pb-3">
-                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" /> Route & Schedule</CardTitle>
+                        {/* RIGHT COLUMN: Interactive Route & Luxury Timeline (8 cols) */}
+                        <div className="lg:col-span-8 space-y-6">
+                           <Card className="rounded-3xl border border-border/80 shadow-xs overflow-hidden">
+                              <CardHeader className="bg-muted/20 border-b border-border/60 pb-3.5">
+                                 <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5">
+                                       <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                          <MapPin className="h-4 w-4" />
+                                       </div>
+                                       <div>
+                                          <CardTitle className="font-black text-base">Route & Itinerary Schedule</CardTitle>
+                                          <p className="text-xs text-muted-foreground">Detailed journey waypoints and scheduled times</p>
+                                       </div>
+                                    </div>
+
+                                    {/* Multi-Day Segment Switcher */}
                                     {isMultiDay && (
-                                       <div className="flex items-center gap-1 bg-background border rounded-lg p-0.5 shadow-sm">
-                                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setActiveDayIdx(p => Math.max(0, p - 1))} disabled={activeDayIdx === 0}>
-                                             <ChevronLeft className="h-4 w-4" />
-                                          </Button>
-                                          <span className="text-[10px] font-black px-1 uppercase tracking-widest text-muted-foreground whitespace-nowrap">Day {activeDayIdx + 1} of {booking.multiDayStore.length}</span>
-                                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setActiveDayIdx(p => Math.min(booking.multiDayStore.length - 1, p + 1))} disabled={activeDayIdx === booking.multiDayStore.length - 1}>
-                                             <ChevronRight className="h-4 w-4" />
-                                          </Button>
+                                       <div className="flex items-center gap-1.5 bg-background p-1 rounded-xl border border-border/80 shadow-2xs">
+                                          {booking.multiDayStore.map((day: any, dIdx: number) => (
+                                             <Button
+                                                key={dIdx}
+                                                variant={activeDayIdx === dIdx ? "default" : "ghost"}
+                                                size="sm"
+                                                onClick={() => setActiveDayIdx(dIdx)}
+                                                className={`h-7 px-3 text-xs font-bold rounded-lg cursor-pointer transition-all ${
+                                                   activeDayIdx === dIdx
+                                                      ? 'bg-primary text-primary-foreground shadow-2xs'
+                                                      : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                             >
+                                                Day {dIdx + 1}
+                                             </Button>
+                                          ))}
                                        </div>
                                     )}
                                  </div>
                               </CardHeader>
                               <CardContent className="p-0">
-                                 {/* Map Visualization Area */}
-                                 <div className="h-64 bg-slate-100 relative overflow-hidden border-b z-10 group cursor-pointer" onClick={() => setActiveTab("operations")}>
-                                    <div className="absolute inset-0 z-10 pointer-events-none">
+                                 {/* Map Container */}
+                                 <div className="h-72 sm:h-80 bg-slate-100 relative overflow-hidden border-b z-10">
+                                    <div className="absolute inset-0 z-10">
                                        <LiveMapWrapper
                                           pickup={{ coordinate: { lat: activePickupLoc.lat, lon: activePickupLoc.lng || activePickupLoc.lon }, name: activePickupName }}
                                           dropoff={{ coordinate: { lat: activeDropoffLoc.lat, lon: activeDropoffLoc.lng || activeDropoffLoc.lon }, name: activeDropoffName }}
@@ -796,72 +1000,134 @@ export default function BookingDetailsProfile() {
                                           countryCode={booking?.countryCode || 'ES'}
                                        />
                                     </div>
-                                    <div className="absolute inset-0 z-20 bg-background/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center">
-                                       <Button variant="default" className="shadow-2xl font-black tracking-widest uppercase text-xs gap-2 bg-primary hover:bg-primary/90 scale-95 group-hover:scale-100 transition-transform">
-                                          <Activity className="h-4 w-4" /> Go to Operations
-                                       </Button>
+                                    {/* Floating stats badge on map */}
+                                    <div className="absolute bottom-4 left-4 z-20 bg-background/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-border/80 shadow-sm flex items-center gap-3 text-xs font-bold">
+                                       <span className="flex items-center gap-1 text-primary">
+                                          <MapIcon className="h-3.5 w-3.5" />
+                                          {booking.route.distance}
+                                       </span>
+                                       <span className="text-muted-foreground">&bull;</span>
+                                       <span className="flex items-center gap-1 text-foreground">
+                                          <Timer className="h-3.5 w-3.5" />
+                                          {booking.route.duration}
+                                       </span>
+                                       <span className="text-muted-foreground">&bull;</span>
+                                       <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                          ⚡ Optimal Route
+                                       </span>
                                     </div>
                                  </div>
-                                 {/* Timeline Details */}
-                                 <div className="p-6">
+
+                                 {/* Luxury Waypoints Timeline */}
+                                 <div className="p-6 sm:p-7">
                                     {isMultiDay && activeRouteData?.dateStr && (
-                                       <h4 className="text-[13px] font-extrabold text-blue-600 mb-4 ml-3">{activeRouteData.dateStr.replace(/^(Day \d+) • \1$/, "$1")}</h4>
+                                       <div className="mb-6 flex items-center justify-between pb-3 border-b border-border/60">
+                                          <h4 className="text-sm font-black text-foreground flex items-center gap-2">
+                                             <Calendar className="h-4 w-4 text-primary" />
+                                             <span>{activeRouteData.dateStr.replace(/^(Day \d+) • \1$/, "$1")}</span>
+                                          </h4>
+                                          <span className="text-xs font-mono font-bold text-muted-foreground">
+                                             {activeStops.length} intermediate stops
+                                          </span>
+                                       </div>
                                     )}
-                                    <div className="relative border-l-2 border-border/50 ml-3 space-y-8 pb-4">
-                                       {/* Pickup Node */}
-                                       <div className="relative pl-6">
-                                          <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full bg-background border-2 border-emerald-500 z-10" />
+
+                                    <div className="relative border-l-2 border-border/70 ml-4 space-y-8 pb-2">
+                                       {/* Pickup Waypoint Node */}
+                                       <div className="relative pl-7 group">
+                                          <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-background border-2 border-emerald-500 ring-4 ring-emerald-500/20 z-10" />
                                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                             <div>
-                                                <Badge variant="outline" className="text-[10px] font-black uppercase text-emerald-600 border-emerald-200 bg-emerald-50 mb-1.5 px-2">Pickup</Badge>
-                                                <h3 className="font-bold text-base leading-tight">{activePickupName}</h3>
-                                             </div>
-                                             <div className="text-left sm:text-right bg-muted/30 p-3 rounded-lg border flex-shrink-0">
-                                                <div className="flex items-center sm:justify-end gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                                                   <Calendar className="h-3 w-3" /> {booking.schedule.actualStart ? 'Actual Time' : 'Scheduled Time'}
+                                             <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                   <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-md">
+                                                      Origin Departure
+                                                   </span>
+                                                   <a
+                                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activePickupName)}`}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-0.5"
+                                                   >
+                                                      <span>Map</span>
+                                                      <ExternalLink className="h-3 w-3" />
+                                                   </a>
                                                 </div>
-                                                <p className="font-bold text-foreground">
+                                                <h3 className="font-bold text-base text-foreground leading-tight">{activePickupName}</h3>
+                                             </div>
+                                             <div className="text-left sm:text-right bg-muted/40 p-3 rounded-2xl border border-border/60 shrink-0">
+                                                <div className="flex items-center sm:justify-end gap-1 text-[10px] font-black uppercase text-muted-foreground tracking-wider mb-0.5">
+                                                   <Calendar className="h-3 w-3" />
+                                                   <span>Scheduled Departure</span>
+                                                </div>
+                                                <p className="font-bold text-xs text-foreground">
                                                    {new Date(booking.schedule.actualStart || booking.schedule.start).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
                                                 </p>
-                                                <p className="text-xl font-black text-primary tracking-tight">
+                                                <p className="text-lg font-black text-primary tracking-tight">
                                                    {new Date(booking.schedule.actualStart || booking.schedule.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                              </div>
                                           </div>
                                        </div>
 
-                                       {/* Intermediate Stops Nodes */}
+                                       {/* Intermediate Stop Nodes */}
                                        {activeStops.map((stop: any, sIdx: number) => (
-                                          <div key={stop.id || sIdx} className="relative pl-6">
-                                             <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full bg-background border-2 border-indigo-500 z-10" />
+                                          <div key={stop.id || sIdx} className="relative pl-7 group">
+                                             <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-background border-2 border-indigo-500 z-10" />
                                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                <div>
-                                                   <Badge variant="outline" className="text-[10px] font-black uppercase text-indigo-600 border-indigo-200 bg-indigo-50 mb-1.5 px-2">
-                                                      Stop {sIdx + 1}
-                                                   </Badge>
-                                                   <h3 className="font-bold text-sm leading-tight">{stop.name || stop.address}</h3>
-                                                   <p className="text-xs text-muted-foreground mt-1">Wait time: {stop.stopDurationMin || 1} min</p>
+                                                <div className="space-y-1">
+                                                   <div className="flex items-center gap-2">
+                                                      <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                                                         Stop {sIdx + 1}
+                                                      </span>
+                                                      <span className="text-[11px] font-medium text-muted-foreground">
+                                                         ⏱ Wait: {stop.stopDurationMin || 1} min
+                                                      </span>
+                                                      <a
+                                                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.name || stop.address)}`}
+                                                         target="_blank"
+                                                         rel="noopener noreferrer"
+                                                         className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-0.5"
+                                                      >
+                                                         <span>Map</span>
+                                                         <ExternalLink className="h-3 w-3" />
+                                                      </a>
+                                                   </div>
+                                                   <h3 className="font-bold text-sm text-foreground leading-tight">{stop.name || stop.address}</h3>
                                                 </div>
                                              </div>
                                           </div>
                                        ))}
 
                                        {/* Destination Node */}
-                                       <div className="relative pl-6">
-                                          <div className="absolute -left-[9px] top-1.5 h-4 w-4 rounded-full bg-background border-2 border-primary z-10" />
+                                       <div className="relative pl-7 group">
+                                          <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-background border-2 border-primary ring-4 ring-primary/20 z-10" />
                                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                             <div>
-                                                <Badge variant="outline" className="text-[10px] font-black uppercase text-primary border-primary/20 bg-primary/10 mb-1.5 px-2">Dropoff</Badge>
-                                                <h3 className="font-bold text-base leading-tight">{activeDropoffName}</h3>
-                                             </div>
-                                             <div className="text-left sm:text-right bg-muted/30 p-3 rounded-lg border flex-shrink-0">
-                                                <div className="flex items-center sm:justify-end gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                                                   <Calendar className="h-3 w-3" /> {booking.schedule.actualEnd ? 'Actual Time' : 'Scheduled Time'}
+                                             <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                   <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 rounded-md">
+                                                      Final Destination
+                                                   </span>
+                                                   <a
+                                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeDropoffName)}`}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-0.5"
+                                                   >
+                                                      <span>Map</span>
+                                                      <ExternalLink className="h-3 w-3" />
+                                                   </a>
                                                 </div>
-                                                <p className="font-bold text-foreground">
+                                                <h3 className="font-bold text-base text-foreground leading-tight">{activeDropoffName}</h3>
+                                             </div>
+                                             <div className="text-left sm:text-right bg-muted/40 p-3 rounded-2xl border border-border/60 shrink-0">
+                                                <div className="flex items-center sm:justify-end gap-1 text-[10px] font-black uppercase text-muted-foreground tracking-wider mb-0.5">
+                                                   <Calendar className="h-3 w-3" />
+                                                   <span>Estimated Arrival</span>
+                                                </div>
+                                                <p className="font-bold text-xs text-foreground">
                                                    {new Date(booking.schedule.actualEnd || booking.schedule.end).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
                                                 </p>
-                                                <p className="text-xl font-black text-primary tracking-tight">
+                                                <p className="text-lg font-black text-primary tracking-tight">
                                                    {new Date(booking.schedule.actualEnd || booking.schedule.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                              </div>
@@ -869,29 +1135,23 @@ export default function BookingDetailsProfile() {
                                        </div>
                                     </div>
 
-                                    {/* Trip Estimations panel */}
-                                    <div className="mt-8 pt-6 border-t border-border/50">
-                                       <div className="flex items-center justify-between mb-4">
-                                          <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                                             <Activity className="h-4 w-4 text-primary" /> Trip Estimations
-                                          </h4>
-                                       </div>
-
-                                       <div className="grid grid-cols-3 gap-3 mb-6">
-                                          <div className="bg-slate-50 border rounded-lg p-3 flex flex-col items-center justify-center text-center">
-                                             <MapIcon className="h-5 w-5 text-muted-foreground mb-1.5" />
-                                             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Distance</p>
-                                             <p className="text-lg font-black text-foreground leading-none">{booking.route.distance}</p>
+                                    {/* Trip Estimations Bento Grid */}
+                                    <div className="mt-8 pt-6 border-t border-border/60">
+                                       <div className="grid grid-cols-3 gap-3">
+                                          <div className="bg-muted/30 border border-border/60 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center">
+                                             <MapIcon className="h-4 w-4 text-primary mb-1" />
+                                             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-0.5">Total Distance</p>
+                                             <p className="text-base font-black text-foreground">{booking.route.distance}</p>
                                           </div>
-                                          <div className="bg-slate-50 border rounded-lg p-3 flex flex-col items-center justify-center text-center">
-                                             <Timer className="h-5 w-5 text-muted-foreground mb-1.5" />
-                                             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Duration</p>
-                                             <p className="text-lg font-black text-foreground leading-none">{booking.route.duration}</p>
+                                          <div className="bg-muted/30 border border-border/60 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center">
+                                             <Timer className="h-4 w-4 text-blue-500 mb-1" />
+                                             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-0.5">Driving Time</p>
+                                             <p className="text-base font-black text-foreground">{booking.route.duration}</p>
                                           </div>
-                                          <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 flex flex-col items-center justify-center text-center">
-                                             <Percent className="h-5 w-5 text-emerald-600 mb-1.5" />
-                                             <p className="text-[10px] font-black uppercase text-emerald-700 tracking-widest leading-none mb-1">Utilization</p>
-                                             <p className="text-lg font-black text-emerald-700 leading-none">82%</p>
+                                          <div className="bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/60 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center">
+                                             <ShieldCheck className="h-4 w-4 text-emerald-600 mb-1" />
+                                             <p className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 tracking-widest mb-0.5">Route Health</p>
+                                             <p className="text-base font-black text-emerald-700 dark:text-emerald-400">100% Optimal</p>
                                           </div>
                                        </div>
                                     </div>
