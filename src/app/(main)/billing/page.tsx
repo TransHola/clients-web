@@ -21,6 +21,8 @@ const invoiceStatusCfg: Record<string, any> = {
   draft: { label: "Draft", icon: Clock, color: "bg-slate-100 text-slate-700 border-slate-200" },
 }
 
+const BOOKING_API_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://localhost:8000';
+
 function AddPaymentMethodForm({ onSuccess, onCancel }: { onSuccess: () => void, onCancel: () => void }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -41,7 +43,7 @@ function AddPaymentMethodForm({ onSuccess, onCancel }: { onSuccess: () => void, 
       
       if (!userId) throw new Error("Not authenticated")
 
-      const res = await fetch("http://localhost:8000/api/bookings/create-setup-intent", {
+      const res = await fetch(`${BOOKING_API_URL}/api/bookings/create-setup-intent`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -121,7 +123,7 @@ export default function BillingPage() {
       
       if (!userId) return
 
-      const res = await fetch("http://localhost:8000/api/bookings/payment-methods", {
+      const res = await fetch(`${BOOKING_API_URL}/api/bookings/payment-methods`, {
         headers: {
           "Authorization": `Bearer ${token}`,
           "x-user-id": userId,
@@ -133,7 +135,7 @@ export default function BillingPage() {
         setPaymentMethods(json.data || [])
       }
     } catch (err) {
-      console.error("Failed to load payment methods:", err)
+      console.warn("Failed to load payment methods:", err)
     } finally {
       setLoadingMethods(false)
     }
@@ -142,32 +144,141 @@ export default function BillingPage() {
   React.useEffect(() => {
     async function loadInvoices() {
       try {
+        setLoading(true)
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
         const userId = session?.user?.id
+        const userEmail = session?.user?.email
         
         if (!userId) {
           setLoading(false)
           return
         }
 
-        const { data, error } = await supabase.from('invoices').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        if (error) throw error;
-        setInvoices(data || []);
+        const invoiceList: any[] = []
+
+        // 1. Attempt to fetch Stripe invoices via booking engine
+        try {
+          const res = await fetch(`${BOOKING_API_URL}/api/bookings/invoices`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "x-user-id": userId,
+              "x-user-email": userEmail || ""
+            }
+          })
+          if (res.ok) {
+            const json = await res.json()
+            if (Array.isArray(json.data)) {
+              invoiceList.push(...json.data)
+            }
+          }
+        } catch {
+          // Booking engine invoices API fallback
+        }
+
+        // 2. Fetch User Bookings to synthesize any trip invoices
+        try {
+          const { data: userBookings } = await supabase
+            .from('bookings')
+            .select('*')
+            .or(`customer_id.eq.${userId},user_id.eq.${userId}`)
+            .order('created_at', { ascending: false })
+
+          if (userBookings && userBookings.length > 0) {
+            const existingRefs = new Set(invoiceList.map(inv => inv.booking_id))
+            userBookings.forEach((b: any) => {
+              const ref = b.booking_ref || (b.id ? b.id.slice(0, 8).toUpperCase() : "TRIP")
+              if (!existingRefs.has(ref) && !existingRefs.has(b.id)) {
+                invoiceList.push({
+                  id: `inv-${b.id}`,
+                  invoice_number: `INV-${ref}`,
+                  created_at: b.created_at,
+                  total_amount: b.total_price || b.price || 0,
+                  status: b.payment_status === 'paid' ? 'paid' : (b.status === 'confirmed' ? 'paid' : 'open'),
+                  notes: `${b.pickup_address || 'Pickup'} → ${b.dropoff_address || 'Destination'}`,
+                  booking_id: ref,
+                  url: null,
+                  pdf: null,
+                })
+              }
+            })
+          }
+        } catch {
+          // Bookings query fallback
+        }
+
+        setInvoices(invoiceList)
       } catch (err) {
-        console.error("Failed to load invoices:", err)
+        console.warn("Failed to load invoices, using empty fallback:", err)
+        setInvoices([])
       } finally {
         setLoading(false)
       }
     }
 
     async function loadPayments() {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      const userId = session?.user?.id
-      if (userId) {
-        const { data } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        setPayments(data || []);
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const userId = session?.user?.id
+        const userEmail = session?.user?.email
+        if (!userId) return
+
+        const paymentsList: any[] = []
+
+        // 1. Fetch Stripe payments via booking engine
+        try {
+          const res = await fetch(`${BOOKING_API_URL}/api/bookings/payments`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "x-user-id": userId,
+              "x-user-email": userEmail || ""
+            }
+          })
+          if (res.ok) {
+            const json = await res.json()
+            if (Array.isArray(json.data)) {
+              paymentsList.push(...json.data)
+            }
+          }
+        } catch {
+          // Fallback to booking payments
+        }
+
+        // 2. Synthesize paid bookings as payment history records if none from Stripe
+        if (paymentsList.length === 0) {
+          try {
+            const { data: paidBookings } = await supabase
+              .from('bookings')
+              .select('*')
+              .or(`customer_id.eq.${userId},user_id.eq.${userId}`)
+              .order('created_at', { ascending: false })
+
+            if (paidBookings) {
+              paidBookings.forEach((b: any) => {
+                if (b.payment_status === 'paid' || b.status === 'confirmed' || b.status === 'completed') {
+                  paymentsList.push({
+                    id: `pay-${b.id}`,
+                    created_at: b.created_at,
+                    provider: 'stripe',
+                    status: 'succeeded',
+                    amount: b.total_price || b.price || 0,
+                    receipt_url: null,
+                  })
+                }
+              })
+            }
+          } catch {
+            // Paid bookings fallback
+          }
+        }
+
+        setPayments(paymentsList)
+      } catch (err) {
+        console.warn("Failed to load payments:", err)
+        setPayments([])
       }
     }
 
@@ -178,16 +289,14 @@ export default function BillingPage() {
     const supabase = createClient()
     const channel = supabase
       .channel('client_billing_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
-        loadInvoices();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        loadInvoices()
+        loadPayments()
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
-        loadPayments();
-      })
-      .subscribe();
+      .subscribe()
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channel)
     }
   }, [fetchPaymentMethods])
 
@@ -206,7 +315,7 @@ export default function BillingPage() {
       
       if (!userId) return
 
-      await fetch(`http://localhost:8000/api/bookings/payment-methods/${id}/default`, {
+      await fetch(`${BOOKING_API_URL}/api/bookings/payment-methods/${id}/default`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -229,7 +338,7 @@ export default function BillingPage() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       
-      await fetch(`http://localhost:8000/api/bookings/payment-methods/${id}`, {
+      await fetch(`${BOOKING_API_URL}/api/bookings/payment-methods/${id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
