@@ -1524,7 +1524,21 @@ function ConfirmationPanel({ bookingId, option, bookingDetails, currency = "AED"
   
   // Realism: use a small timeout to "activate" the steps so it animates in
   const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => { setMounted(true) }, []);
+  React.useEffect(() => { 
+    setMounted(true);
+    if (typeof window !== 'undefined' && ref) {
+      try {
+        const savedRefsStr = localStorage.getItem('transhola_recent_booking_refs');
+        const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : [];
+        if (!savedRefs.includes(ref)) {
+          savedRefs.unshift(ref);
+          localStorage.setItem('transhola_recent_booking_refs', JSON.stringify(savedRefs.slice(0, 15)));
+        }
+      } catch (e) {
+        console.warn("Failed to cache booking ref:", e);
+      }
+    }
+  }, [ref]);
 
   const steps = React.useMemo(() => {
     if (isFuture) {
