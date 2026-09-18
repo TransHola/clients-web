@@ -33,21 +33,34 @@ export default function QuotationsPage() {
       try {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
-        const userId = session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34"
+        const authUser = session?.user || (await supabase.auth.getUser()).data?.user
+        const currentUserId = authUser?.id
 
         const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').maybeSingle()
         
         let query = supabase
           .from("bookings")
           .select("*")
-          .eq("user_id", userId)
           .order("created_at", { ascending: false })
 
-        if (statusData) {
-            query = query.eq("status_id", statusData.id)
+        // Check for local storage recent quote refs (e.g. for guest or newly saved quotes)
+        const savedRefsStr = typeof window !== 'undefined' ? localStorage.getItem('transhola_recent_quote_refs') : null
+        const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : []
+
+        if (currentUserId) {
+          if (savedRefs.length > 0) {
+            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId},booking_ref.in.(${savedRefs.join(',')})`)
+          } else {
+            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}`)
+          }
+        } else if (savedRefs.length > 0) {
+          query = query.in('booking_ref', savedRefs)
+        }
+
+        if (statusData?.id) {
+          query = query.or(`status_id.eq.${statusData.id},status.eq.quotation,booking_ref.ilike.QTE-%,booking_ref.ilike.Q-%`)
         } else {
-            // Fallback if DB doesn't have status_id yet
-            query = query.eq("status", "quotation")
+          query = query.or(`status.eq.quotation,booking_ref.ilike.QTE-%,booking_ref.ilike.Q-%`)
         }
         
         const { data, error } = await query

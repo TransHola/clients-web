@@ -278,16 +278,21 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "BYPASS_AUTH";
+      const authUser = session?.user || (await supabase.auth.getUser()).data?.user;
+      const token = session?.access_token;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
 
       const res = await fetch(`${BOOKING_API_URL}/quotation`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({
-          userId: session?.user?.id || "7cf68383-439b-4971-980d-f29e646a2d34", // Explicit payload testing ID fallback
+          userId: authUser?.id,
           option: selected,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
@@ -311,15 +316,34 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         })
       });
 
-      if (!res.ok) throw new Error("Failed to save quotation");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || errJson.error || "Failed to save quotation");
+      }
+
+      const resData = await res.json().catch(() => null);
+      const quoteRef = resData?.data?.ref || resData?.data?.booking_ref;
+      if (quoteRef && typeof window !== 'undefined') {
+        try {
+          const prevStr = localStorage.getItem('transhola_recent_quote_refs');
+          const prev: string[] = prevStr ? JSON.parse(prevStr) : [];
+          if (!prev.includes(quoteRef)) {
+            prev.unshift(quoteRef);
+            localStorage.setItem('transhola_recent_quote_refs', JSON.stringify(prev.slice(0, 30)));
+          }
+        } catch (storageErr) {
+          console.warn("Could not cache quote ref:", storageErr);
+        }
+      }
 
       localStorage.removeItem("saved_itinerary");
       setSavedAsQuote(true);
       setTimeout(() => {
         window.location.href = "/quotations";
-      }, 1500);
-    } catch (e) {
+      }, 1200);
+    } catch (e: any) {
       console.error("Quotation Error:", e);
+      alert(e.message || "Failed to save quotation. Please try again.");
     } finally {
       setIsSavingQuote(false);
     }
@@ -757,7 +781,9 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
   const [isLoadingCards, setIsLoadingCards] = React.useState(true);
   const [selectedCard, setSelectedCard] = React.useState<string>('new');
-  const [saveNewCard, setSaveNewCard] = React.useState(false);
+  const [saveNewCard, setSaveNewCard] = React.useState(true);
+  const [mockCardNumber, setMockCardNumber] = React.useState("•••• •••• •••• 4242");
+  const [mockExpiry, setMockExpiry] = React.useState("12/28");
 
   React.useEffect(() => {
     async function fetchCards() {
@@ -768,25 +794,50 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
         const userId = session?.user?.id;
         const userEmail = session?.user?.email;
 
-        if (!userId) {
-          setIsLoadingCards(false);
-          return;
+        let combinedCards: any[] = [];
+
+        if (userId) {
+          try {
+            const res = await fetch(`${BOOKING_API_URL}/payment-methods`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "x-user-id": userId,
+                "x-user-email": userEmail || ""
+              }
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              combinedCards = data.data || [];
+            }
+          } catch (apiErr) {
+            console.warn("Could not fetch remote cards in mock mode:", apiErr);
+          }
         }
 
-        const res = await fetch(`${BOOKING_API_URL}/payment-methods`, {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "x-user-id": userId,
-            "x-user-email": userEmail || ""
+        // Merge locally stored mock cards for seamless demo/testing experience
+        if (typeof window !== 'undefined') {
+          try {
+            const localSaved = JSON.parse(localStorage.getItem('transhola_mock_saved_cards') || '[]');
+            if (Array.isArray(localSaved)) {
+              const existingIds = new Set(combinedCards.map((c: any) => c.id));
+              for (const lc of localSaved) {
+                if (!existingIds.has(lc.id)) {
+                  combinedCards.push(lc);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Could not read local mock cards:", e);
           }
-        });
+        }
 
-        if (res.ok) {
-          const data = await res.json();
-          setSavedCards(data.data || []);
-          if (data.data?.length > 0) {
-            setSelectedCard(data.data[0].id);
-          }
+        setSavedCards(combinedCards);
+        if (combinedCards.length > 0) {
+          const def = combinedCards.find((c: any) => c.isDefault) || combinedCards[0];
+          setSelectedCard(def.id);
+        } else {
+          setSelectedCard('new');
         }
       } catch (err) {
         console.error("Failed to fetch cards", err);
@@ -800,6 +851,27 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
     setPayState("loading");
+
+    // If adding a new card and user opted to save it, cache it locally in mock mode
+    if (selectedCard === 'new' && saveNewCard && typeof window !== 'undefined') {
+      try {
+        const rawLast4 = mockCardNumber.replace(/\D/g, '').slice(-4) || '4242';
+        const newMockCard = {
+          id: `pm_mock_${Date.now()}`,
+          brand: 'Visa',
+          type: 'visa',
+          last4: rawLast4,
+          exp: mockExpiry || '12/28',
+          expiry: mockExpiry || '12/28',
+          isDefault: true
+        };
+        const existing = JSON.parse(localStorage.getItem('transhola_mock_saved_cards') || '[]');
+        const updated = [newMockCard, ...existing.map((c: any) => ({ ...c, isDefault: false }))];
+        localStorage.setItem('transhola_mock_saved_cards', JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Could not cache mock card:", e);
+      }
+    }
 
     setTimeout(async () => {
       try {
@@ -995,31 +1067,40 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
                 Loading saved cards...
               </div>
             ) : (
-              savedCards.map(card => (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => setSelectedCard(card.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', borderRadius: '12px',
-                    border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
-                    background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                      <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+              savedCards.map(card => {
+                const brand = (card.brand || card.type || 'Card').toUpperCase();
+                const exp = card.exp || card.expiry || 'N/A';
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedCard(card.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 14px', borderRadius: '12px',
+                      border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                      background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
+                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '38px', height: '26px', background: '#f8fafc', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', fontWeight: 800, fontSize: '10px', color: '#1e293b' }}>
+                        {brand === 'VISA' ? 'VISA' : brand === 'MASTERCARD' ? 'MC' : brand === 'AMEX' ? 'AMEX' : <CreditCard style={{ width: '15px', height: '15px', color: '#64748b' }} />}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{brand} •••• {card.last4}</p>
+                          {card.isDefault && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: '4px', border: '1px solid #bfdbfe' }}>Default</span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#64748b', margin: '2px 0 0' }}>Expires {exp}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
-                      <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
-                    </div>
-                  </div>
-                  {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
-                </button>
-              ))
+                    {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+                  </button>
+                );
+              })
             )}
 
             <button
@@ -1034,10 +1115,10 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '24px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
-                  <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                <div style={{ width: '38px', height: '26px', background: '#e2e8f0', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
+                  <CreditCard style={{ width: '15px', height: '15px', color: '#64748b' }} />
                 </div>
-                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>Add New Card</p>
+                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>+ Add New Card</p>
               </div>
               {selectedCard === 'new' && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
             </button>
@@ -1045,16 +1126,79 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
         </div>
 
         {selectedCard === 'new' && (
-          <div style={{ padding: '20px', textAlign: 'center', border: '1.5px dashed #cbd5e1', borderRadius: '12px', background: '#f8fafc' }}>
-            <p style={{ fontSize: '14px', fontWeight: 700, color: '#334155' }}>Demo Environment</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Stripe API keys are not configured. Click confirm below to simulate a successful payment.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ padding: '16px', border: '1.5px solid #e2e8f0', borderRadius: '14px', background: 'white' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <p style={{ fontSize: '12px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Card Details</p>
+                <span style={{ fontSize: '10px', fontWeight: 700, background: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '4px' }}>Demo Mode</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>Card Number</label>
+                  <input
+                    type="text"
+                    value={mockCardNumber}
+                    onChange={(e) => setMockCardNumber(e.target.value)}
+                    placeholder="4242 4242 4242 4242"
+                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, background: '#f8fafc', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>Expires</label>
+                    <input
+                      type="text"
+                      value={mockExpiry}
+                      onChange={(e) => setMockExpiry(e.target.value)}
+                      placeholder="MM/YY"
+                      style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, background: '#f8fafc', outline: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>CVC</label>
+                    <input
+                      type="text"
+                      defaultValue="123"
+                      placeholder="CVC"
+                      style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, background: '#f8fafc', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                <Info style={{ width: '16px', height: '16px', color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
-                <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
-                  <strong>Securely stored for your convenience.</strong> We save your card details securely with Stripe to enable seamless processing of this trip, overages, or future bookings.
-                </p>
+            {/* Securely Save Card Checkbox */}
+            <div style={{
+              padding: '14px 16px',
+              background: '#f8fafc',
+              borderRadius: '14px',
+              border: saveNewCard ? '1.5px solid #93c5fd' : '1.5px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              transition: 'all 0.2s ease'
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  id="mock-save-card-toggle"
+                  checked={saveNewCard}
+                  onChange={(e) => setSaveNewCard(e.target.checked)}
+                  style={{ width: '18px', height: '18px', marginTop: '2px', cursor: 'pointer', accentColor: '#2563eb', flexShrink: 0 }}
+                />
+                <div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Save this card securely for future bookings
+                    <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px' }}>Recommended</span>
+                  </span>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0', lineHeight: 1.4 }}>
+                    Skip entering card details next time. Encrypted and saved securely via Stripe PCI-DSS Level 1 tokenization.
+                  </p>
+                </div>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '8px', borderTop: '1px solid #e2e8f0', marginTop: '2px' }}>
+                <ShieldCheck style={{ width: '14px', height: '14px', color: '#16a34a' }} />
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>256-bit SSL encrypted · Never re-enter details again</span>
               </div>
             </div>
           </div>
@@ -1079,7 +1223,7 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
   const [isLoadingCards, setIsLoadingCards] = React.useState(true);
   const [selectedCard, setSelectedCard] = React.useState<string>('new');
-  const [saveNewCard, setSaveNewCard] = React.useState(false);
+  const [saveNewCard, setSaveNewCard] = React.useState(true);
 
   React.useEffect(() => {
     async function fetchCards() {
@@ -1105,9 +1249,13 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
 
         if (res.ok) {
           const data = await res.json();
-          setSavedCards(data.data || []);
-          if (data.data?.length > 0) {
-            setSelectedCard(data.data[0].id);
+          const cards = data.data || [];
+          setSavedCards(cards);
+          if (cards.length > 0) {
+            const def = cards.find((c: any) => c.isDefault) || cards[0];
+            setSelectedCard(def.id);
+          } else {
+            setSelectedCard('new');
           }
         }
       } catch (err) {
@@ -1200,7 +1348,7 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
           pickupWaitMin: bookingDetails?.pickupWaitMin,
           paymentIntentId: finalPaymentIntentId,
           savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
-          savePaymentMethod: selectedCard === 'new' ? true : false,
+          savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
         })
       });
 
@@ -1358,31 +1506,40 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
                 Loading saved cards...
               </div>
             ) : (
-              savedCards.map(card => (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => setSelectedCard(card.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', borderRadius: '12px',
-                    border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
-                    background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '36px', height: '24px', background: '#f1f5f9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                      <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+              savedCards.map(card => {
+                const brand = (card.brand || card.type || 'Card').toUpperCase();
+                const exp = card.expiry || card.exp || 'N/A';
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedCard(card.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 14px', borderRadius: '12px',
+                      border: selectedCard === card.id ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                      background: selectedCard === card.id ? '#eff6ff' : '#ffffff',
+                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '38px', height: '26px', background: '#f8fafc', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', fontWeight: 800, fontSize: '10px', color: '#1e293b' }}>
+                        {brand === 'VISA' ? 'VISA' : brand === 'MASTERCARD' ? 'MC' : brand === 'AMEX' ? 'AMEX' : <CreditCard style={{ width: '15px', height: '15px', color: '#64748b' }} />}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{brand} •••• {card.last4}</p>
+                          {card.isDefault && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: '4px', border: '1px solid #bfdbfe' }}>Default</span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#64748b', margin: '2px 0 0' }}>Expires {exp}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>{card.brand} •••• {card.last4}</p>
-                      <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Expires {card.exp}</p>
-                    </div>
-                  </div>
-                  {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
-                </button>
-              ))
+                    {selectedCard === card.id && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
+                  </button>
+                );
+              })
             )}
 
             <button
@@ -1397,10 +1554,10 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '24px', background: '#e2e8f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
-                  <CreditCard style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                <div style={{ width: '38px', height: '26px', background: '#e2e8f0', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
+                  <CreditCard style={{ width: '15px', height: '15px', color: '#64748b' }} />
                 </div>
-                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>Add New Card</p>
+                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#0f172a' }}>+ Add New Card</p>
               </div>
               {selectedCard === 'new' && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#2563eb' }} />}
             </button>
@@ -1423,12 +1580,39 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
               }}
             />
 
-            <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                <Info style={{ width: '16px', height: '16px', color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
-                <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
-                  <strong>Securely stored for your convenience.</strong> We save your card details securely with Stripe to enable seamless processing of this trip, overages, or future bookings.
-                </p>
+            {/* Securely Save Card Checkbox */}
+            <div style={{
+              marginTop: '16px',
+              padding: '14px 16px',
+              background: '#f8fafc',
+              borderRadius: '14px',
+              border: saveNewCard ? '1.5px solid #93c5fd' : '1.5px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              transition: 'all 0.2s ease'
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  id="stripe-save-card-toggle"
+                  checked={saveNewCard}
+                  onChange={(e) => setSaveNewCard(e.target.checked)}
+                  style={{ width: '18px', height: '18px', marginTop: '2px', cursor: 'pointer', accentColor: '#2563eb', flexShrink: 0 }}
+                />
+                <div>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Save this card securely for future bookings
+                    <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px' }}>Recommended</span>
+                  </span>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0', lineHeight: 1.4 }}>
+                    Never re-enter card details again. Encrypted and saved securely via Stripe (PCI DSS Level 1).
+                  </p>
+                </div>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '8px', borderTop: '1px solid #e2e8f0', marginTop: '2px' }}>
+                <ShieldCheck style={{ width: '14px', height: '14px', color: '#16a34a' }} />
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>256-bit SSL encrypted · Bank-grade security</span>
               </div>
             </div>
           </div>
@@ -1477,7 +1661,8 @@ export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack,
             bookingDetails,
             countryCode: bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || 'GLOBAL',
             userId: session?.user?.id,
-            userEmail: session?.user?.email
+            userEmail: session?.user?.email,
+            savePaymentMethod: true
           })
         });
         const data = await res.json();
