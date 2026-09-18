@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Layers, LocateFixed, RotateCcw, History, Check } from "lucide-react"
+import { Layers, LocateFixed, RotateCcw, History, Check, ChevronDown, ChevronUp } from "lucide-react"
 import { MapContainer, TileLayer, Marker, Popup, useMap, ZoomControl } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -639,6 +639,7 @@ export function LiveMap({
   countryCode,
   distanceUnit = 'km',
   isVehicleDetailsOpen,
+  showRouteCard,
 }: {
   pickup?: any
   dropoff?: any
@@ -657,6 +658,7 @@ export function LiveMap({
   isStaticPreview?: boolean
   countryCode?: string
   distanceUnit?: string
+  showRouteCard?: boolean
 }) {
   const defaultCenter: [number, number] = userLocation
     ? [Number(userLocation.lat) || 20, Number(userLocation.lon) || 0]
@@ -668,6 +670,14 @@ export function LiveMap({
     }
     return `${(distanceMeters / 1000).toFixed(1)} km`;
   }
+
+  // Collapse state for route card (when enabled)
+  const [isRouteCardCollapsed, setIsRouteCardCollapsed] = React.useState(false)
+
+  // In read-only mode (pinsLocked) or when showRouteCard is explicitly false,
+  // we do not render this floating card because trip stats are already displayed
+  // in dedicated schedule cards and bottom map pills, preventing redundant clutter.
+  const shouldRenderRouteCard = showRouteCard !== undefined ? showRouteCard : !pinsLocked
 
   // Route history UI state
   const [histLen, setHistLen] = React.useState(0)
@@ -1005,121 +1015,152 @@ export function LiveMap({
           </button>
         </div>)}
 
-      {/* ── Smart Route Card (top-left, appears when route is calculated) ── */}
-      {!isStaticPreview && hasRoute && liveRouteDuration && liveRouteDistance && (
+      {/* ── Smart Route Card (top-left, appears when route is calculated and enabled) ── */}
+      {!isStaticPreview && shouldRenderRouteCard && hasRoute && liveRouteDuration && liveRouteDistance && (
         <div style={{
           position: "absolute", top: 16, left: 16, zIndex: 400,
           display: "flex", flexDirection: "column", gap: "6px",
-          minWidth: "220px",
+          minWidth: isRouteCardCollapsed ? "auto" : "220px",
         }}>
           {/* Live route card */}
           <div style={{
-            background: "white", borderRadius: "14px", padding: "12px 16px",
+            background: "white", borderRadius: "14px", padding: isRouteCardCollapsed ? "8px 12px" : "12px 16px",
             boxShadow: "0 4px 16px rgba(0,0,0,0.14)", border: "1px solid #e2e8f0",
+            transition: "all 0.2s ease-in-out",
           }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8" }}>Best Route</span>
-              {smartScore !== null && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "3px",
-                  background: smartScore >= 70 ? "#f0fdf4" : smartScore >= 40 ? "#fefce8" : "#fff5f5",
-                  border: `1px solid ${smartScore >= 70 ? "#bbf7d0" : smartScore >= 40 ? "#fef08a" : "#fecaca"}`,
-                  borderRadius: "8px", padding: "2px 7px",
-                }}>
-                  <span style={{ fontSize: "11px" }}>
-                    {smartScore >= 70 ? "⚡" : smartScore >= 40 ? "🔶" : "⚠️"}
-                  </span>
-                  <span style={{ fontSize: "11px", fontWeight: 800, color: smartScore >= 70 ? "#15803d" : smartScore >= 40 ? "#92400e" : "#b91c1c" }}>
-                    {smartScore}/100
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {tripType === 'shuttle' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
-                  <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
-                  <span style={{ fontSize: "10px", fontWeight: 800, color: "#7c3aed", background: "#ede9fe", padding: "2px 6px", borderRadius: "4px" }}>Round Trip Loop</span>
-                </div>
-                {liveOneWayDuration !== null && liveOneWayDistance !== null && (
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
-                    <span style={{ fontSize: "16px", fontWeight: 800, color: "#475569" }}>{formatDur(liveOneWayDuration)}</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveOneWayDistance || 0)}</span>
-                    <span style={{ fontSize: "10px", fontWeight: 700, color: "#ea580c", background: "#ffedd5", padding: "2px 6px", borderRadius: "4px" }}>One Way Trip</span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: isRouteCardCollapsed ? "0" : "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8" }}>Best Route</span>
+                {smartScore !== null && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: "3px",
+                    background: smartScore >= 70 ? "#f0fdf4" : smartScore >= 40 ? "#fefce8" : "#fff5f5",
+                    border: `1px solid ${smartScore >= 70 ? "#bbf7d0" : smartScore >= 40 ? "#fef08a" : "#fecaca"}`,
+                    borderRadius: "8px", padding: "2px 7px",
+                  }}>
+                    <span style={{ fontSize: "11px" }}>
+                      {smartScore >= 70 ? "⚡" : smartScore >= 40 ? "🔶" : "⚠️"}
+                    </span>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: smartScore >= 70 ? "#15803d" : smartScore >= 40 ? "#92400e" : "#b91c1c" }}>
+                      {smartScore}/100
+                    </span>
                   </div>
                 )}
-
-                {shuttleVehicles > 1 && (
-                  <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
-                    <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>🚌 View {shuttleVehicles} Vehicles</span>
-                      <span style={{ fontSize: "9px" }}>▼</span>
-                    </summary>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
-                      {Array.from({ length: shuttleVehicles }).map((_, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Vehicle {i + 1}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveRouteDistance || 0)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
+                {isRouteCardCollapsed && (
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#0f172a", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                    {formatDur(liveRouteDuration)} <span style={{ color: "#64748b", fontWeight: 600, fontSize: "11px" }}>({formatDistance(liveRouteDistance || 0)})</span>
+                  </span>
                 )}
               </div>
-            ) : tripType === 'multi-day' && multiDayStore && multiDayStore.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
-                  <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(multiDayStore.reduce((acc, day) => acc + (day.routeDuration || 0), 0))}</span>
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(multiDayStore.reduce((acc, day) => acc + (day.routeDistance || 0), 0))}</span>
-                  <span style={{ fontSize: "10px", fontWeight: 800, color: "#2563eb", background: "#eff6ff", padding: "2px 6px", borderRadius: "4px" }}>Multi-Day Itinerary</span>
-                </div>
-                {multiDayStore.length > 1 && (
-                  <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
-                    <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📅 View {multiDayStore.length} Days Breakdown</span>
-                      <span style={{ fontSize: "9px" }}>▼</span>
-                    </summary>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
-                      {multiDayStore.map((day, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Day {i + 1}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(day.routeDuration || 0)}</span>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(day.routeDistance || 0)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
-                <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "6px" }}>
-              {savedRoutes.length > 0 && (
-                <button
-                  onClick={() => setShowSaved(v => !v)}
-                  style={{
-                    flex: 1, height: "32px", borderRadius: "8px",
-                    background: showSaved ? "#f1f5f9" : "#0f172a",
-                    color: showSaved ? "#0f172a" : "white", border: "none",
-                    fontSize: "12px", fontWeight: 700, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                  }}
-                >
-                  {showSaved ? 'Hide Automatic Saves' : `View ${savedRoutes.length} Auto-Saved ${savedRoutes.length === 1 ? 'Route' : 'Routes'}`}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsRouteCardCollapsed(v => !v)}
+                title={isRouteCardCollapsed ? "Expand route details" : "Collapse route card"}
+                style={{
+                  background: "#f1f5f9",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "4px 6px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#64748b",
+                  transition: "background 0.2s",
+                }}
+              >
+                {isRouteCardCollapsed ? <ChevronDown style={{ width: "13px", height: "13px" }} /> : <ChevronUp style={{ width: "13px", height: "13px" }} />}
+              </button>
             </div>
+
+            {!isRouteCardCollapsed && (
+              <>
+                {tripType === 'shuttle' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                      <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
+                      <span style={{ fontSize: "10px", fontWeight: 800, color: "#7c3aed", background: "#ede9fe", padding: "2px 6px", borderRadius: "4px" }}>Round Trip Loop</span>
+                    </div>
+                    {liveOneWayDuration !== null && liveOneWayDistance !== null && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                        <span style={{ fontSize: "16px", fontWeight: 800, color: "#475569" }}>{formatDur(liveOneWayDuration)}</span>
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveOneWayDistance || 0)}</span>
+                        <span style={{ fontSize: "10px", fontWeight: 700, color: "#ea580c", background: "#ffedd5", padding: "2px 6px", borderRadius: "4px" }}>One Way Trip</span>
+                      </div>
+                    )}
+
+                    {shuttleVehicles > 1 && (
+                      <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
+                        <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>🚌 View {shuttleVehicles} Vehicles</span>
+                          <span style={{ fontSize: "9px" }}>▼</span>
+                        </summary>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
+                          {Array.from({ length: shuttleVehicles }).map((_, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Vehicle {i + 1}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(liveRouteDistance || 0)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ) : tripType === 'multi-day' && multiDayStore && multiDayStore.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                      <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(multiDayStore.reduce((acc, day) => acc + (day.routeDuration || 0), 0))}</span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(multiDayStore.reduce((acc, day) => acc + (day.routeDistance || 0), 0))}</span>
+                      <span style={{ fontSize: "10px", fontWeight: 800, color: "#2563eb", background: "#eff6ff", padding: "2px 6px", borderRadius: "4px" }}>Multi-Day Itinerary</span>
+                    </div>
+                    {multiDayStore.length > 1 && (
+                      <details style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "8px" }}>
+                        <summary style={{ fontSize: "11px", fontWeight: 700, color: "#475569", listStyle: "none", outline: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📅 View {multiDayStore.length} Days Breakdown</span>
+                          <span style={{ fontSize: "9px" }}>▼</span>
+                        </summary>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
+                          {multiDayStore.map((day, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Day {i + 1}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f172a" }}>{formatDur(day.routeDuration || 0)}</span>
+                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#94a3b8" }}>{formatDistance(day.routeDistance || 0)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
+                    <span style={{ fontSize: "20px", fontWeight: 900, color: "#0f172a" }}>{formatDur(liveRouteDuration)}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>{formatDistance(liveRouteDistance || 0)}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {savedRoutes.length > 0 && (
+                    <button
+                      onClick={() => setShowSaved(v => !v)}
+                      style={{
+                        flex: 1, height: "32px", borderRadius: "8px",
+                        background: showSaved ? "#f1f5f9" : "#0f172a",
+                        color: showSaved ? "#0f172a" : "white", border: "none",
+                        fontSize: "12px", fontWeight: 700, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                      }}
+                    >
+                      {showSaved ? 'Hide Automatic Saves' : `View ${savedRoutes.length} Auto-Saved ${savedRoutes.length === 1 ? 'Route' : 'Routes'}`}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Saved routes panel */}

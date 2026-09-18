@@ -22,5 +22,6 @@ export const LiveMapWrapper = dynamic(
   onRestoreRoute?: (pickup: PinLocation, dropoff: PinLocation, stops: StopLocation[]) => void
   pinsLocked?: boolean
   isVehicleDetailsOpen?: boolean
+  showRouteCard?: boolean
 }>
 

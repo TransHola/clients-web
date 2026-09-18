@@ -997,6 +997,7 @@ export default function BookingDetailsProfile() {
                                           stops={activeStops}
                                           tripType={booking?.activityType?.toLowerCase() || 'shuttle'}
                                           pinsLocked={true}
+                                          showRouteCard={false}
                                           countryCode={booking?.countryCode || 'ES'}
                                        />
                                     </div>
@@ -1210,6 +1211,7 @@ export default function BookingDetailsProfile() {
                                        stops={activeStops}
                                        tripType={booking?.activityType?.toLowerCase() || 'shuttle'}
                                        pinsLocked={true}
+                                       showRouteCard={false}
                                        countryCode={booking?.countryCode || 'ES'}
                                     />
                                  </div>
