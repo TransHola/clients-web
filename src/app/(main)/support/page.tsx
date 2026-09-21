@@ -195,6 +195,10 @@ export default function SupportPage() {
 
     async function loadTicketMessages() {
       setIsLoadingMessages(true)
+        if (!selectedTicket?.id) {
+          setIsLoadingMessages(false);
+          return;
+        }
       try {
         const supabase = createClient()
         const { data, error } = await supabase

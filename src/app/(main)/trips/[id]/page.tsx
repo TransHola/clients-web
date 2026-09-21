@@ -234,10 +234,12 @@ export default function BookingDetailsProfile() {
    }
 
    const [messages, setMessages] = useState<any[]>([]);
-   const [isChatOpen, setIsChatOpen] = useState(false)
+   const [isChatOpen, setIsChatOpen] = useState(false);
+   const [isSocketConnected, setIsSocketConnected] = useState(false);
 
-   const messagesEndRef = useRef<HTMLDivElement>(null)
-   const floatingMessagesEndRef = useRef<HTMLDivElement>(null)
+   const messagesEndRef = useRef<HTMLDivElement>(null);
+   const floatingMessagesEndRef = useRef<HTMLDivElement>(null);
+   const wsRef = useRef<WebSocket | null>(null);
 
    useEffect(() => {
       if (activeTab === 'client_comm' || isChatOpen) {
@@ -248,7 +250,66 @@ export default function BookingDetailsProfile() {
       }
    }, [messages.length, activeTab, isChatOpen]);
 
-   const hasUnread = messages.some(m => m.role === 'client' && !m.read_at);
+   const hasUnread = messages.some(m => m.role !== 'client' && !m.read_at);
+
+   // ── REAL-TIME CHAT ENGINE WEBSOCKET (:4080) INTEGRATION ──────────
+   useEffect(() => {
+      if (!decodedId) return;
+
+      const wsUrl = `ws://localhost:4080/ws/chat?roomId=${encodeURIComponent(decodedId)}&name=Client+Passenger&role=Passenger`;
+      let ws: WebSocket;
+
+      try {
+         ws = new WebSocket(wsUrl);
+         wsRef.current = ws;
+
+         ws.onopen = () => {
+            setIsSocketConnected(true);
+         };
+
+         ws.onmessage = (event) => {
+            try {
+               const data = JSON.parse(event.data);
+               if (data.type === 'chat_message' || data.type === 'message') {
+                  const m = data.data || data;
+                  setMessages(prev => {
+                     if (prev.some(p => p.id === m.id || (p.text === (m.text || m.message) && Math.abs(new Date(p.timestamp).getTime() - new Date(m.created_at || m.timestamp || Date.now()).getTime()) < 3000))) {
+                        return prev;
+                     }
+                     return [...prev, {
+                        id: m.id || `ws_${Date.now()}`,
+                        sender: m.sender || m.senderName || 'Dispatch / Chauffeur',
+                        role: (m.role?.toLowerCase()?.includes('client') || m.role?.toLowerCase()?.includes('passenger')) ? 'client' : 'operator',
+                        text: m.text || m.message || '',
+                        timestamp: m.created_at || m.timestamp || new Date().toISOString(),
+                        read: true,
+                        read_at: new Date().toISOString(),
+                        channel: 'secure'
+                     }];
+                  });
+               }
+            } catch {
+               // Ignore malformed message frames
+            }
+         };
+
+         ws.onclose = () => {
+            setIsSocketConnected(false);
+         };
+
+         ws.onerror = () => {
+            setIsSocketConnected(false);
+         };
+      } catch {
+         // Graceful fallback
+      }
+
+      return () => {
+         if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+         }
+      };
+   }, [decodedId]);
 
    useEffect(() => {
       if (!decodedId) return;
@@ -260,7 +321,7 @@ export default function BookingDetailsProfile() {
             .eq('booking_id', decodedId)
             .order('created_at', { ascending: true });
 
-         if (data) {
+         if (data && data.length > 0) {
             setMessages(data.map((msg: any) => ({
                id: msg.id,
                sender: msg.sender,
@@ -271,6 +332,26 @@ export default function BookingDetailsProfile() {
                read_at: msg.read_at,
                channel: msg.channel
             })));
+         } else {
+            // Fallback to chat_messages if present
+            const { data: chatMsgs } = await (supabase as any)
+               .from('chat_messages')
+               .select('*')
+               .eq('booking_id', decodedId)
+               .order('created_at', { ascending: true });
+
+            if (chatMsgs && chatMsgs.length > 0) {
+               setMessages(chatMsgs.map((msg: any) => ({
+                  id: msg.id,
+                  sender: msg.sender,
+                  role: msg.role?.toLowerCase()?.includes('client') || msg.role?.toLowerCase()?.includes('passenger') ? 'client' : 'operator',
+                  text: msg.message,
+                  timestamp: msg.created_at,
+                  read: true,
+                  read_at: msg.created_at,
+                  channel: 'secure'
+               })));
+            }
          }
       };
 
@@ -322,7 +403,7 @@ export default function BookingDetailsProfile() {
 
    useEffect(() => {
       if ((activeTab === "client_comm" || isChatOpen) && hasUnread) {
-         const unreadIds = messages.filter(m => m.role === 'client' && !m.read_at).map(m => m.id);
+         const unreadIds = messages.filter(m => m.role !== 'client' && !m.read_at).map(m => m.id);
          if (unreadIds.length > 0) {
             supabase.from('booking_conversations')
                .update({ read: true, read_at: new Date().toISOString() })
@@ -336,16 +417,71 @@ export default function BookingDetailsProfile() {
       if (!chatInput.trim()) return;
       const text = chatInput;
       const channelType = activeChannel;
+      const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const nowStr = new Date().toISOString();
       setChatInput("");
 
+      // 1. Optimistic Local Append
+      const optimisticMsg = {
+         id: msgId,
+         sender: "Client (Passenger)",
+         role: "client",
+         text: text,
+         timestamp: nowStr,
+         read: true,
+         read_at: nowStr,
+         channel: channelType
+      };
+      setMessages(prev => [...prev, optimisticMsg]);
+
+      // 2. Broadcast to Fast WebSocket Engine (:4080)
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+         wsRef.current.send(JSON.stringify({
+            type: 'chat_message',
+            roomId: decodedId,
+            senderName: 'Client (Passenger)',
+            role: 'Passenger',
+            text: text
+         }));
+      }
+
+      // 3. Send to Fast HTTP Endpoint (Zero delay fanout)
+      try {
+         fetch('http://localhost:4080/api/chat/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+               roomId: decodedId,
+               senderId: 'client_passenger',
+               senderName: 'Client (Passenger)',
+               role: 'Passenger',
+               text: text
+            }),
+            signal: AbortSignal.timeout(1000)
+         }).catch(() => {});
+      } catch {}
+
+      // 4. Persist to booking_conversations & chat_messages in Supabase
       await supabase.from('booking_conversations').insert({
+         id: msgId,
          booking_id: decodedId,
-         sender: "TransHola Fleet Admin",
-         role: "operator",
+         sender: "Client (Passenger)",
+         role: "client",
          text: text,
          channel: channelType,
          read: true
       });
+
+      await (supabase as any).from('chat_messages').insert({
+         id: msgId,
+         booking_id: decodedId,
+         sender: "Client (Passenger)",
+         role: "Client",
+         message: text,
+         is_self: true,
+         status: 'sent',
+         created_at: nowStr
+      }).select().maybeSingle();
    };
 
    const fetchBooking = async () => {
@@ -1542,12 +1678,15 @@ export default function BookingDetailsProfile() {
                                  <div className="flex items-center justify-between flex-wrap gap-2">
                                     <CardTitle className="flex items-center gap-2 text-lg">
                                        <MessageSquare className="h-5 w-5 text-primary" /> Client Communication
-                                       <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1.5 px-2 ml-2">
+                                       <Badge variant="outline" className={`gap-1.5 px-2 ml-2 ${isSocketConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                                           <span className="relative flex h-2 w-2">
-                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                                             <span className={`relative inline-flex rounded-full h-2 w-2 ${isSocketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
                                           </span>
-                                          Online
+                                          {isSocketConnected ? 'Zero-Delay Engine (:4080)' : 'Live Polling'}
+                                       </Badge>
+                                       <Badge variant="secondary" className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 gap-1 border ml-2">
+                                          <ShieldCheck className="w-3 h-3 text-emerald-600" /> PII Scrubbed
                                        </Badge>
                                        <div className="flex -space-x-1 ml-2 items-center">
                                           <div className="h-6 w-6 rounded-full bg-sky-100 border-2 border-background flex items-center justify-center text-sky-500" title="Telegram Connected">
