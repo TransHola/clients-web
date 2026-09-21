@@ -1,5 +1,5 @@
 import { RegisterForm } from "@/components/register-form"
-import { Compass, ShieldCheck, Star, Sparkles, Car, Clock, CreditCard } from "lucide-react"
+import { Compass, ShieldCheck, Sparkles, SearchCheck, Users, Navigation, ThumbsUp, Star } from "lucide-react"
 
 export default function RegisterPage() {
     return (
@@ -10,7 +10,7 @@ export default function RegisterPage() {
 
             {/* Split Container */}
             <div className="flex w-full min-h-screen z-10">
-                {/* Left Panel: VIP Value Proposition & Corporate Perks */}
+                {/* Left Panel: High-Impact Client Value Proposition */}
                 <div className="hidden lg:flex flex-col justify-between flex-[1.1] p-12 lg:p-16 relative border-r border-slate-200/80 dark:border-slate-800/60 bg-white/60 dark:bg-[#020817]/40 backdrop-blur-3xl">
                     {/* Top Branding */}
                     <div className="flex items-center gap-3">
@@ -22,86 +22,102 @@ export default function RegisterPage() {
                                 TransHola <span className="text-blue-600 dark:text-blue-400 font-semibold">Clients</span>
                             </span>
                             <span className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">
-                                Global Mobility Platform
+                                Verified Fleet Marketplace
                             </span>
                         </div>
                     </div>
 
                     {/* Middle Value Proposition */}
-                    <div className="max-w-xl my-auto py-8">
+                    <div className="max-w-xl my-auto py-6">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/80 text-xs font-bold text-blue-600 dark:text-blue-400 mb-6">
                             <Sparkles className="w-3.5 h-3.5" />
-                            <span>Private & Corporate Travel</span>
+                            <span>Effortless Group & Executive Mobility</span>
                         </div>
 
-                        <h1 className="text-4xl lg:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-800 to-slate-500 dark:from-white dark:via-slate-200 dark:to-slate-400 tracking-tight leading-[1.15] mb-6">
-                            Seamless Luxury. Direct Access.
+                        <h1 className="text-4xl lg:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-slate-900 via-slate-800 to-slate-500 dark:from-white dark:via-slate-200 dark:to-slate-400 tracking-tight leading-[1.15] mb-5">
+                            Skip the Search Hassle. Rent with Total Confidence.
                         </h1>
 
-                        <p className="text-base lg:text-lg text-slate-600 dark:text-slate-400 leading-relaxed mb-8 max-w-lg">
-                            Register your TransHola client account to reserve premier chauffeured vehicles, coordinate executive itineraries, and manage corporate business invoicing with total transparency.
+                        <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed mb-8 max-w-lg">
+                            Stop wasting hours calling multiple rental agencies, negotiating unpredictable rates, and worrying about unreliable operators. TransHola gives you instant, direct access to pre-vetted fleets with live end-to-end trip monitoring.
                         </p>
 
-                        {/* Feature Pillars */}
-                        <div className="space-y-4 mb-10">
-                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+                        {/* Feature Value Cards */}
+                        <div className="space-y-3.5 mb-8">
+                            {/* Value 1: Eliminate Search Hassle */}
+                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm transition-all hover:border-blue-500/30">
                                 <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/80 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-                                    <Car className="w-5 h-5" />
+                                    <SearchCheck className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Handpicked Executive Fleet</h4>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                        Mercedes S-Class, V-Class, and luxury coaches maintained to rigorous standards.
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Save Hours — No More Random Calling</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                        Instantly discover and book verified, accredited fleet operators in one place with transparent, guaranteed fixed pricing.
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+                            {/* Value 2: Tailored For Any Group Size */}
+                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm transition-all hover:border-emerald-500/30">
                                 <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                                    <Clock className="w-5 h-5" />
+                                    <Users className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Punctuality & Flight Tracking</h4>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                        Real-time airport flight monitoring with automated buffer times and zero-delay pickups.
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Effortless Sizing: Small or Large Groups</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                        From solo VIP executive sedans to Mercedes V-Class vans and 55-passenger luxury touring coaches—tailored to your exact headcount and luggage.
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+                            {/* Value 3: Live End-to-End Monitoring */}
+                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm transition-all hover:border-indigo-500/30">
                                 <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                                    <CreditCard className="w-5 h-5" />
+                                    <Navigation className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Centralized Billing & VAT Invoicing</h4>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                        Consolidated monthly invoices, instant digital receipts, and transparent all-inclusive fares.
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Live Monitoring: From Start to Completion</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                        Track your vehicle in real time on an interactive map from the second your chauffeur departs, throughout the trip, to your final destination.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Value 4: Report Good/Bad Experience & Accountability */}
+                            <div className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 shadow-sm transition-all hover:border-amber-500/30">
+                                <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/80 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                                    <ThumbsUp className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Report & Rate Every Journey</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                        Share praise or report issues instantly. Every ride is backed by strict operator SLA compliance and 24/7 dedicated support resolution.
                                     </p>
                                 </div>
                             </div>
                         </div>
 
                         {/* Social Proof / Metrics */}
-                        <div className="flex items-center gap-8 pt-4 border-t border-slate-200/80 dark:border-slate-800/60">
+                        <div className="flex items-center gap-6 pt-4 border-t border-slate-200/80 dark:border-slate-800/60">
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-1">
                                     <ShieldCheck className="text-emerald-500" size={18} />
-                                    <span className="text-xl font-bold text-slate-900 dark:text-white">100%</span>
+                                    <span className="text-lg font-bold text-slate-900 dark:text-white">0 Phone Calls</span>
                                 </div>
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Verified Drivers</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Instant Digital Match</span>
                             </div>
-                            <div className="w-px h-10 bg-slate-200 dark:bg-slate-800" />
+                            <div className="w-px h-9 bg-slate-200 dark:bg-slate-800" />
+                            <div className="flex flex-col">
+                                <span className="text-lg font-bold text-slate-900 dark:text-white">1 – 55+ Seats</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Any Group Capacity</span>
+                            </div>
+                            <div className="w-px h-9 bg-slate-200 dark:bg-slate-800" />
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-1">
-                                    <Star className="text-amber-500" size={18} />
-                                    <span className="text-xl font-bold text-slate-900 dark:text-white">4.9 / 5</span>
+                                    <Star className="text-amber-500" size={16} />
+                                    <span className="text-lg font-bold text-slate-900 dark:text-white">4.9 / 5</span>
                                 </div>
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Client Satisfaction</span>
-                            </div>
-                            <div className="w-px h-10 bg-slate-200 dark:bg-slate-800" />
-                            <div className="flex flex-col">
-                                <span className="text-xl font-bold text-slate-900 dark:text-white">99.8%</span>
-                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">On-Time Pickups</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Direct Feedback</span>
                             </div>
                         </div>
                     </div>

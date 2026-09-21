@@ -238,3 +238,31 @@ iframe[src*="stripe.com"][style*="position: fixed"][style*="bottom"] {
   pointer-events: none !important;
 }
 
+/* Clean modern PhoneInput: strip all internal duplicate borders */
+.PhoneInput {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.PhoneInputInput,
+.PhoneInput input,
+input.PhoneInputInput {
+  border: 0 !important;
+  border-width: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.PhoneInputInput:focus,
+.PhoneInput input:focus,
+input.PhoneInputInput:focus {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+

@@ -17,7 +17,8 @@ import {
   ArrowRight, 
   Loader2, 
   ShieldCheck, 
-  Sparkles
+  Sparkles,
+  Phone
 } from "lucide-react"
 
 export function RegisterForm({
@@ -184,21 +185,19 @@ export function RegisterForm({
 
           {/* Phone Number */}
           <div className="space-y-1.5">
-            <label htmlFor="phone" className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+            <label htmlFor="phone" className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-blue-500" />
               Mobile Phone Number
             </label>
             <input type="hidden" name="phone" value={phone} />
-            <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
-              <PhoneInput
-                id="phone"
-                placeholder="Enter mobile number"
-                defaultCountry={defaultCountry}
-                value={phone}
-                onChange={setPhone as any}
-                required
-                className="h-12 text-sm border-0 bg-transparent px-3"
-              />
-            </div>
+            <PhoneInput
+              id="phone"
+              placeholder="Enter mobile phone number"
+              defaultCountry={defaultCountry}
+              value={phone}
+              onChange={setPhone as any}
+              required
+            />
           </div>
 
           {/* Email Address */}
