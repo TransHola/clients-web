@@ -125,7 +125,7 @@ export default function TripsPage() {
       const { data, error } = await query
       if (error) throw error
 
-      if (data) {
+      if (Array.isArray(data)) {
         const now = Date.now()
         const mapped: Booking[] = data.map((b: any) => {
           const rawStatusCode = statusMap[b.status_id] || b.status || 'pending'

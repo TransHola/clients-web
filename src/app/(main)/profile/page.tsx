@@ -74,7 +74,7 @@ export default function ProfilePage() {
         const { data: { session } } = await supabase.auth.getSession()
         const { data: sessionsData } = await supabase.rpc('get_my_active_sessions')
         
-        if (sessionsData) {
+        if (Array.isArray(sessionsData)) {
           let currentSessionId = ""
           if (session?.access_token) {
             try {

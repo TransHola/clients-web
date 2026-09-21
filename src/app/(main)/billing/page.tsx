@@ -554,7 +554,7 @@ export default function BillingPage() {
           .or(`customer_id.eq.${userId},user_id.eq.${userId}`)
           .order('created_at', { ascending: false })
 
-        if (userBookings && userBookings.length > 0) {
+        if (Array.isArray(userBookings) && userBookings.length > 0) {
           const existingRefs = new Set(invoiceList.map(inv => inv.booking_id))
           userBookings.forEach((b: any) => {
             const amount = Number(b.total_price || b.price || 0)
@@ -617,7 +617,7 @@ export default function BillingPage() {
             .or(`customer_id.eq.${userId},user_id.eq.${userId}`)
             .order('created_at', { ascending: false })
 
-          if (paidBookings) {
+          if (Array.isArray(paidBookings) && paidBookings.length > 0) {
             paidBookings.forEach((b: any) => {
               const amount = Number(b.total_price || b.price || 0)
               if (amount > 0 && (b.payment_status === 'paid' || (b.status === 'confirmed' && b.payment_status !== 'unpaid') || b.status === 'completed')) {

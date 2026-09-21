@@ -321,7 +321,7 @@ export default function BookingDetailsProfile() {
             .eq('booking_id', decodedId)
             .order('created_at', { ascending: true });
 
-         if (data && data.length > 0) {
+         if (Array.isArray(data) && data.length > 0) {
             setMessages(data.map((msg: any) => ({
                id: msg.id,
                sender: msg.sender,
@@ -340,7 +340,7 @@ export default function BookingDetailsProfile() {
                .eq('booking_id', decodedId)
                .order('created_at', { ascending: true });
 
-            if (chatMsgs && chatMsgs.length > 0) {
+            if (Array.isArray(chatMsgs) && chatMsgs.length > 0) {
                setMessages(chatMsgs.map((msg: any) => ({
                   id: msg.id,
                   sender: msg.sender,
@@ -587,7 +587,7 @@ export default function BookingDetailsProfile() {
             .or(`metadata->>booking_id.eq.${decodedId},metadata->>id.eq.${decodedId}`)
             .order('created_at', { ascending: false });
 
-         if (logsData && logsData.length > 0) {
+         if (Array.isArray(logsData) && logsData.length > 0) {
             const operationalLogs = logsData.filter(log => {
                const action = (log.action || "").toLowerCase();
                const detail = (log.detail || "").toLowerCase();
@@ -654,7 +654,7 @@ export default function BookingDetailsProfile() {
 
       // Fetch dynamic vehicles and drivers
       const { data: dbVehicles } = await supabase.from('vehicles').select('*');
-      if (dbVehicles && dbVehicles.length > 0) {
+      if (Array.isArray(dbVehicles) && dbVehicles.length > 0) {
          const active = dbVehicles.filter(v => v.status !== 'archived');
          setAvailableVehicles(active);
          if (data) {
@@ -664,7 +664,7 @@ export default function BookingDetailsProfile() {
       }
 
       const { data: dbDrivers } = await supabase.from('drivers').select('*');
-      if (dbDrivers && dbDrivers.length > 0) {
+      if (Array.isArray(dbDrivers) && dbDrivers.length > 0) {
          const active = dbDrivers.filter(d => d.status !== 'archived');
          setAvailableDrivers(active);
          if (data) {
