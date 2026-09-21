@@ -417,7 +417,7 @@ export default function BookingDetailsProfile() {
       if (!chatInput.trim()) return;
       const text = chatInput;
       const channelType = activeChannel;
-      const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'b0000000-0000-4000-8000-' + Math.random().toString(16).slice(2, 14);
       const nowStr = new Date().toISOString();
       setChatInput("");
 
