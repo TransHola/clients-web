@@ -11,12 +11,10 @@ const MAP_LAYERS = {
   gray: {
     name: "Clean Gray",
     description: "Sleek, distraction-free grayscale basemap",
-    getUrl: (key?: string) => key 
-      ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${key}`
-      : "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    getClassName: (key?: string) => key ? "" : "map-tiles-clean-gray",
+    getUrl: () => "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    getClassName: () => "map-tiles-clean-gray",
     maxZoom: 22,
-    getAttribution: (key?: string) => key ? "&copy; CARTO" : "Map data © Google"
+    getAttribution: () => "Map data © Google"
   },
   street: {
     name: "Google 3D Street",
@@ -45,12 +43,10 @@ const MAP_LAYERS = {
   dark: {
     name: "Dark Mode",
     description: "High-contrast dark canvas",
-    getUrl: (key?: string) => key
-      ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${key}`
-      : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    getUrl: () => "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     getClassName: () => "",
     maxZoom: 16,
-    getAttribution: (key?: string) => key ? "&copy; CARTO" : "Tiles &copy; Esri"
+    getAttribution: () => "Tiles &copy; Esri"
   }
 }
 
@@ -695,19 +691,14 @@ export function LiveMap({
   const [showSaved, setShowSaved] = React.useState(false)
   const [mapLayer, setMapLayer] = React.useState<keyof typeof MAP_LAYERS>("gray")
   const [showLayerMenu, setShowLayerMenu] = React.useState(false)
-  const [cartoApiKey, setCartoApiKey] = React.useState<string>("")
   const [savedPreferenceNotice, setSavedPreferenceNotice] = React.useState(false)
 
-  // Load preferred map layer and optional CARTO API key from localStorage on mount
+  // Load preferred map layer from localStorage on mount
   React.useEffect(() => {
     try {
       const savedLayer = localStorage.getItem("transhola_preferred_map_layer") as keyof typeof MAP_LAYERS | null
       if (savedLayer && MAP_LAYERS[savedLayer]) {
         setMapLayer(savedLayer)
-      }
-      const savedKey = localStorage.getItem("transhola_carto_api_key") || process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
-      if (savedKey) {
-        setCartoApiKey(savedKey)
       }
     } catch {}
   }, [])
@@ -852,11 +843,11 @@ export function LiveMap({
       >
         {!isStaticPreview && <ZoomControl position="bottomright" />}
         <TileLayer
-          key={`${mapLayer}-${cartoApiKey}`}
-          attribution={MAP_LAYERS[mapLayer]?.getAttribution(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || "Map data © Google"}
-          url={MAP_LAYERS[mapLayer]?.getUrl(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || MAP_LAYERS.gray.getUrl()}
+          key={mapLayer}
+          attribution={MAP_LAYERS[mapLayer]?.getAttribution() || "Map data © Google"}
+          url={MAP_LAYERS[mapLayer]?.getUrl() || MAP_LAYERS.gray.getUrl()}
           maxZoom={MAP_LAYERS[mapLayer]?.maxZoom || 22}
-          className={MAP_LAYERS[mapLayer]?.getClassName(cartoApiKey ? `?api_key=${cartoApiKey}` : "") || undefined}
+          className={MAP_LAYERS[mapLayer]?.getClassName() || undefined}
         />
 
         {/* Auto-zoom */}
