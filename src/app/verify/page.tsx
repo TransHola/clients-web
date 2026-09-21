@@ -106,7 +106,18 @@ function VerifyContent() {
           )}
           
           {step < 3 && (
-            <div className="flex flex-col items-center gap-6 w-full">
+            <div className="flex flex-col items-center gap-4 w-full">
+              <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 py-1.5 px-3 rounded-full flex items-center gap-2 border border-blue-200 dark:border-blue-900">
+                <span>Dev Verification Code: <strong className="font-mono font-black text-blue-600 dark:text-blue-400">123456</strong></span>
+                <button 
+                  type="button" 
+                  onClick={() => setOtp("123456")}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-bold"
+                >
+                  [Fill 123456]
+                </button>
+              </div>
+
               <InputOTP 
                 maxLength={6} 
                 value={otp} 

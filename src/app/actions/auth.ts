@@ -11,7 +11,7 @@ export async function login(formData: FormData) {
 
   const supabase = await createClient()
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   })
@@ -20,8 +20,50 @@ export async function login(formData: FormData) {
     return { error: error.message }
   }
 
+  // 🛡️ ROLE & PORTAL ISOLATION GUARD:
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, status, phone, phone_number')
+    .eq('id', data.user.id)
+    .maybeSingle()
+
+  const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase()
+
+  // Strictly isolate portals: Operators and SuperAdmins cannot login as clients
+  if (['operator', 'fleet_operator', 'driver', 'dispatcher'].includes(role)) {
+    await supabase.auth.signOut()
+    return { 
+      error: "Access Denied: This account is registered as a Fleet Operator. Please log in at the Fleet Operators portal (operator.transhola.com)." 
+    }
+  }
+
+  if (['superadmin', 'super_admin'].includes(role)) {
+    await supabase.auth.signOut()
+    return { 
+      error: "Access Denied: Administrative accounts cannot log in to the Client portal. Please use admin.transhola.com." 
+    }
+  }
+
+  if (role && !['client', 'customer', ''].includes(role)) {
+    await supabase.auth.signOut()
+    return { error: "Access Denied: Unauthorized role for this portal." }
+  }
+
+  // If status is still Pending Verification, route to verify with both email & phone params
+  const userPhone = profile?.phone || profile?.phone_number || data.user.user_metadata?.phone || ''
+  if (profile?.status === 'Pending Verification') {
+    revalidatePath('/', 'layout')
+    return { 
+      success: true, 
+      redirectTo: `/verify?email=${encodeURIComponent(email)}&phone=${encodeURIComponent(userPhone)}` 
+    }
+  }
+
   revalidatePath('/', 'layout')
-  redirect(`/verify?email=${encodeURIComponent(email)}`)
+  return { 
+    success: true, 
+    redirectTo: '/' 
+  }
 }
 
 export async function register(formData: FormData) {
@@ -44,9 +86,11 @@ export async function register(formData: FormData) {
       data: {
         first_name: firstName,
         last_name: lastName,
+        full_name: `${firstName} ${lastName}`.trim(),
         phone: phone,
         company_name: entityName,
-        is_company: isCompany
+        is_company: isCompany,
+        role: 'client'
       }
     }
   })

@@ -70,7 +70,8 @@ export function LoginForm({
           if (result?.error) {
               setAuthError(result.error)
           } else if (result?.success) {
-              router.push(`/verify?email=${encodeURIComponent(result.email)}`)
+              router.push(result.redirectTo || '/')
+              router.refresh()
           }
       } catch (err: any) {
           console.error(err)
