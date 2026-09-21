@@ -66,7 +66,7 @@ export default function ProfilePage() {
           setFirstName(data.first_name || data.full_name?.split(' ')[0] || "")
           setLastName(data.last_name || data.full_name?.split(' ').slice(1).join(' ') || "")
           setEmail(data.email || "")
-          setPhone(data.phone_number || "")
+          setPhone(data.phone_number || data.phone || "")
           setCompanyName(data.preferences?.companyName || "")
         }
 
@@ -101,6 +101,7 @@ export default function ProfilePage() {
         first_name: firstName,
         last_name: lastName,
         full_name: `${firstName} ${lastName}`.trim(),
+        phone: phone,
         phone_number: phone,
         preferences: { ...profile?.preferences, companyName: companyName }
       }).eq('id', user.id)
@@ -109,7 +110,7 @@ export default function ProfilePage() {
         alert("Failed to save profile: " + error.message)
       } else {
         // Update local state
-        setProfile({ ...profile, first_name: firstName, last_name: lastName, phone_number: phone, preferences: { ...profile?.preferences, companyName: companyName } })
+        setProfile({ ...profile, first_name: firstName, last_name: lastName, phone: phone, phone_number: phone, preferences: { ...profile?.preferences, companyName: companyName } })
         alert("Profile saved successfully.")
       }
     }
