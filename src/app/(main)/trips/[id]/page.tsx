@@ -69,6 +69,7 @@ import {
 
 import dynamic from "next/dynamic"
 import { useEffect } from "react"
+import { SecureContact } from "@/components/common/secure-contact"
 
 
 const CountdownTimer = ({ targetDate, status }: { targetDate: string, status?: string }) => {
@@ -1528,7 +1529,15 @@ export default function BookingDetailsProfile() {
                                                 {primaryDriver ? `${primaryDriver.first_name} ${primaryDriver.last_name}` : 'Driver to be dispatched'}
                                              </p>
                                              <p className="text-xs text-muted-foreground">
-                                                {primaryDriver ? `${primaryDriver.license_class || 'CDL'} • ${primaryDriver.phone || 'No Phone'}` : 'Partner operator will assign driver prior to departure'}
+                                                {primaryDriver ? (
+                                                   <span className="inline-flex items-center gap-1.5">
+                                                      <span>{primaryDriver.license_class || 'CDL'}</span>
+                                                      <span>•</span>
+                                                      <SecureContact type="phone" value={primaryDriver.phone} variant="inline" />
+                                                   </span>
+                                                ) : (
+                                                   'Partner operator will assign driver prior to departure'
+                                                )}
                                              </p>
                                           </div>
                                        </div>
@@ -1582,7 +1591,11 @@ export default function BookingDetailsProfile() {
                                              </div>
                                              <div>
                                                 <p className="font-bold text-sm text-slate-700">{driver.first_name} {driver.last_name}</p>
-                                                <p className="text-xs text-muted-foreground">{driver.license_class || 'CDL'} • {driver.phone || 'No Phone'}</p>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                                   <span>{driver.license_class || 'CDL'}</span>
+                                                   <span>•</span>
+                                                   <SecureContact type="phone" value={driver.phone} variant="inline" />
+                                                </div>
                                              </div>
                                           </div>
                                        </div>
@@ -1616,16 +1629,20 @@ export default function BookingDetailsProfile() {
                                  <div className="p-3 bg-muted/30 rounded-lg border space-y-2">
                                     <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Primary Contact</p>
                                     <p className="font-bold">{booking.customerName}</p>
-                                    <p className="text-xs text-primary font-medium">{booking.contact?.email}</p>
-                                    <p className="text-xs text-muted-foreground">{booking.contact?.phone}</p>
+                                    <div className="flex flex-col gap-1.5 mt-1">
+                                       <SecureContact type="email" value={booking.contact?.email} variant="inline" />
+                                       <SecureContact type="phone" value={booking.contact?.phone} variant="inline" />
+                                    </div>
                                  </div>
                                  {booking.isThirdParty && booking.thirdPartyInfo && (
                                     <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2 relative overflow-hidden">
                                        <div className="absolute top-0 right-0 px-2 py-1 bg-amber-200 text-[8px] font-black uppercase tracking-widest text-amber-800 rounded-bl-lg">Agency</div>
                                        <p className="text-[10px] font-black uppercase text-amber-700 tracking-widest">Third-Party Booker</p>
                                        <p className="font-bold text-amber-950">{booking.thirdPartyInfo.firstName} {booking.thirdPartyInfo.lastName} {booking.thirdPartyInfo.company ? `(${booking.thirdPartyInfo.company})` : ''}</p>
-                                       <p className="text-xs text-amber-800 font-medium">{booking.thirdPartyInfo.email}</p>
-                                       <p className="text-xs text-amber-700">{booking.thirdPartyInfo.phone}</p>
+                                       <div className="flex flex-col gap-1.5 mt-1">
+                                          <SecureContact type="email" value={booking.thirdPartyInfo.email} variant="inline" />
+                                          <SecureContact type="phone" value={booking.thirdPartyInfo.phone} variant="inline" />
+                                       </div>
                                     </div>
                                  )}
                                  <div className="p-3 bg-muted/30 rounded-lg border space-y-2">
@@ -1646,7 +1663,9 @@ export default function BookingDetailsProfile() {
                                     <div>
                                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Lead Passenger</p>
                                        <p className="font-bold">{booking.customerName}</p>
-                                       <p className="text-xs text-muted-foreground mt-0.5">{booking.contact?.phone}</p>
+                                       <div className="mt-1">
+                                          <SecureContact type="phone" value={booking.contact?.phone} variant="inline" />
+                                       </div>
                                     </div>
                                     <Button size="icon" variant="outline" className="h-8 w-8 rounded-full border-primary/20 text-primary hover:bg-primary/10">
                                        <MapPin className="h-4 w-4" />
