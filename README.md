@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TransHola Clients Web — Passenger & Corporate Booking Portal
 
-## Getting Started
+> **Enterprise Charter Transportation, Self-Service Booking & Live Trip Tracking**  
+> Built with **Next.js (App Router)**, **React**, **Tailwind CSS**, and **Stripe Elements**.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🎯 Purpose & Scope
+
+TransHola Clients Web provides a modern, seamless digital booking and trip management experience for both individual travelers and enterprise corporate accounts (universities, tour operators, corporate event managers, wedding planners).
+
+### Key Features
+1. **Dynamic Quotation Flow:** Instant price estimation powered by the backend **`booking-engine`** and **`gis-engine`**, evaluating vehicle classes, mileage, duration, and regional taxes.
+2. **Interactive Map Route Planner:** Turn-by-turn route visualization, multi-stop itineraries, and pickup/drop-off point geocoding.
+3. **Secure Checkout & Invoicing:** Seamless payment processing via Stripe Elements, corporate PO billing, and automated invoice PDF generation.
+4. **Live Trip Tracking HUD:** Real-time map tracking of the assigned vehicle on the day of service with live ETA updates.
+5. **Passenger Manifests & Digital Boarding:** Manage passenger lists, send SMS boarding notifications, and access digital boarding passes.
+
+---
+
+## 🏛️ Project Structure
+
+```
+clients-web/
+├── src/
+│   ├── app/
+│   │   ├── (auth)/                     # Client login, registration, SSO & password recovery
+│   │   ├── (booking)/                  # Multi-step booking wizard
+│   │   │   ├── quote/                  # Itinerary input, date picker & passenger count
+│   │   │   ├── vehicles/               # Vehicle category selection & amenities comparison
+│   │   │   ├── checkout/               # Stripe card payment, invoice billing & confirmation
+│   │   ├── (dashboard)/                # Account overview, upcoming trips & past travel history
+│   │   │   ├── trips/[id]/             # Trip detail, live driver tracking map & manifest
+│   │   │   └── invoices/               # Financial receipts, invoices & tax breakdowns
+│   │   └── api/                        # Next.js route handlers & Stripe webhook listeners
+│   ├── components/
+│   │   ├── booking/                    # Quotation calculators, vehicle cards, route reviews
+│   │   ├── maps/                       # Interactive Leaflet / MapLibre itinerary preview
+│   │   └── ui/                         # Reusable UI component library (shadcn/ui)
+│   └── lib/                            # Supabase client, Stripe client & distance formatting
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 Getting Started
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# 1. Install dependencies
+bun install
+# or: npm install
 
-## Learn More
+# 2. Configure environment
+cp .env.example .env.local
 
-To learn more about Next.js, take a look at the following resources:
+# Required environment variables:
+# NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+# NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJ..."
+# NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
+# STRIPE_SECRET_KEY="sk_test_..."
+# NEXT_PUBLIC_API_GATEWAY_URL="https://api.transhola.com"
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# 3. Start development server
+bun run dev
+# or: npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Visit [`http://localhost:3000`](http://localhost:3000).
