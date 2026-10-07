@@ -547,6 +547,10 @@ export function BookingPanel({
         } else if (trip === "one_way" || trip === "oneway") {
           setShowReturn(false);
           setIsShuttle(false);
+        } else if (trip === "multiday" || trip === "multi-day") {
+          setShowReturn(true);
+          setIsShuttle(false);
+          setRoundTripMode('continuous');
         }
         const dt = urlParams.get("date");
         if (dt) setStartDate(dt);
@@ -556,6 +560,26 @@ export function BookingPanel({
         if (rdt) setEndDate(rdt);
         const rtm = urlParams.get("returnTime");
         if (rtm) setEndTime(rtm);
+        const daysParam = parseInt(urlParams.get("days") || "", 10);
+        if (daysParam > 1 && dt) {
+          const store: DailyData[] = [];
+          for (let i = 0; i < daysParam; i++) {
+            const nextD = new Date(dt);
+            nextD.setDate(nextD.getDate() + i);
+            const dateStr = nextD.toISOString().split('T')[0];
+            store.push({
+              dateStr,
+              startTime: tm || '09:00',
+              pickupValue: p || '',
+              pickupLoc: null,
+              dropoffValue: d || '',
+              dropoffLoc: null,
+              stops: [],
+              routePolyline: null
+            });
+          }
+          setMultiDayStore(store);
+        }
         const stopsParam = urlParams.get("stops");
         if (stopsParam) {
           try {
