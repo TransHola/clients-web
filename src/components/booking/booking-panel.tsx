@@ -518,7 +518,58 @@ export function BookingPanel({
       const saved = localStorage.getItem("saved_itinerary")
       const urlParams = new URLSearchParams(window.location.search);
       if (saved || urlParams.get("quote")) {
-        setHasSelectedTripType(true)
+        setHasSelectedTripType(true);
+      }
+
+      // Deep link parameters from landing page (transhola.com)
+      if (urlParams.get("pickup") || urlParams.get("dropoff") || urlParams.get("passengers")) {
+        setHasSelectedTripType(true);
+        const p = urlParams.get("pickup");
+        if (p) {
+          setPickupValue(p);
+        }
+        const d = urlParams.get("dropoff");
+        if (d) {
+          setDropoffValue(d);
+        }
+        const pax = parseInt(urlParams.get("passengers") || "", 10);
+        if (!isNaN(pax) && pax > 0) {
+          setPassengers(pax);
+          setPassengerInput(String(pax));
+        }
+        const trip = urlParams.get("tripType");
+        if (trip === "round_trip" || trip === "roundtrip") {
+          setShowReturn(true);
+          setIsShuttle(false);
+        } else if (trip === "shuttle") {
+          setIsShuttle(true);
+          setShowReturn(false);
+        } else if (trip === "one_way" || trip === "oneway") {
+          setShowReturn(false);
+          setIsShuttle(false);
+        }
+        const dt = urlParams.get("date");
+        if (dt) setStartDate(dt);
+        const tm = urlParams.get("time");
+        if (tm) setStartTime(tm);
+        const rdt = urlParams.get("returnDate");
+        if (rdt) setEndDate(rdt);
+        const rtm = urlParams.get("returnTime");
+        if (rtm) setEndTime(rtm);
+        const stopsParam = urlParams.get("stops");
+        if (stopsParam) {
+          try {
+            const parsedStops = JSON.parse(stopsParam);
+            if (Array.isArray(parsedStops)) {
+              setStops(parsedStops.map((s: any, idx: number) => ({
+                id: `stop-${idx}-${Date.now()}`,
+                address: s.address || '',
+                loc: s.loc || null,
+                stopDurationMin: s.waitMin || 15
+              })));
+            }
+          } catch(e) {}
+        }
       }
     }
   }, []);
