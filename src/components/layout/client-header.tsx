@@ -42,31 +42,23 @@ export function ClientHeader() {
     <header className="sticky top-0 z-[1000] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
       <div className="flex w-full h-16 items-center justify-between px-4 md:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black border border-white/10 shadow-sm shrink-0">
-              <svg viewBox="0 0 100 100" fill="none" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="cw-t-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#FFFFFF" />
-                    <stop offset="30%" stopColor="#F1F5F9" />
-                    <stop offset="70%" stopColor="#CBD5E1" />
-                    <stop offset="100%" stopColor="#94A3B8" />
-                  </linearGradient>
-                </defs>
-                <path 
-                  d="M16 28 C28 23, 50 23, 62 23 C74 23, 85 23.5, 89 26 C92 28, 92 31.5, 87 34.5 C80 39, 70 39.5, 59 39.5 L54 48 L42 79 C39 86.5, 34 87.5, 30 87.5 C26.5 87.5, 25.5 83.5, 27.5 77.5 L38.5 49 L37.5 39.5 L18 39.5 C14.5 39.5, 13 36.5, 14 32.5 C14.5 30, 15.2 28.5, 16 28 Z
-                     M22 34 L38.5 34 L46 28.5 C40 28, 28 28.5, 21.5 31 C21 32, 21.5 33.5, 22 34 Z
-                     M57 34 C67 34, 76 33.5, 82 31 C83.5 30, 83 28.5, 80 27.5 C74 26.5, 60 27, 52 28 L49.5 34 L57 34 Z
-                     M44.5 46.5 L33.5 74.5 C32.5 77.5, 33.5 80.5, 35.5 80.5 C37 80.5, 38.5 78.5, 40.5 73.5 L50 49.5 C48.5 48.5, 46.5 47.5, 44.5 46.5 Z" 
-                  fill="url(#cw-t-grad)" 
-                  stroke="#94A3B8" 
-                  strokeWidth="0.8"
-                  strokeLinejoin="round"
-                  fillRule="evenodd"
-                />
-              </svg>
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl overflow-hidden border border-border/60 shadow-sm shrink-0 bg-white dark:bg-black">
+              <img 
+                src="/images/brand/transhola-linear-mark-dark.jpg" 
+                alt="TransHola" 
+                className="w-full h-full object-cover hidden dark:block" 
+              />
+              <img 
+                src="/images/brand/transhola-linear-mark-light.jpg" 
+                alt="TransHola" 
+                className="w-full h-full object-cover block dark:hidden" 
+              />
             </div>
-            <span className="text-xl font-black tracking-tight hidden sm:inline-block">TRANSHOLA</span>
+            <div className="flex flex-col leading-tight hidden sm:flex">
+              <span className="text-lg font-black tracking-tight text-foreground">TransHola</span>
+              <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground">ONE CLICK TO YOUR ACTIVITY</span>
+            </div>
           </Link>
 
           {user && (
