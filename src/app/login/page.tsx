@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import { LoginForm } from "@/components/login-form"
-import { Compass, MapPin, ShieldCheck, Star } from "lucide-react"
+import { ArrowLeft, Compass, MapPin, ShieldCheck, Star } from "lucide-react"
 
 export default function Page() {
     return (
@@ -82,6 +82,20 @@ export default function Page() {
                 {/* Right Panel: Login Form */}
                 <div className="flex-1 flex items-center justify-center p-8 lg:p-12 bg-white/60 dark:bg-[#020817]/60 backdrop-blur-xl">
                     <div className="w-full max-w-[400px]">
+                        {/* Go Back to Main TransHola Site */}
+                        <div className="mb-6 flex items-center justify-between">
+                            <a 
+                                href="https://transhola.com" 
+                                className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white transition-all group px-3.5 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-900/70 hover:bg-slate-200/90 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800/80 shadow-sm"
+                            >
+                                <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1 text-slate-500 group-hover:text-blue-600 dark:group-hover:text-white" />
+                                <span>Back to TransHola</span>
+                            </a>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                Customer Portal
+                            </span>
+                        </div>
+
                         <Suspense fallback={<div className="h-64 flex items-center justify-center text-sm text-muted-foreground">Loading...</div>}>
                             <LoginForm />
                         </Suspense>
