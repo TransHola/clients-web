@@ -118,11 +118,11 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: { isOpen: boolean, on
       <DialogContent className="sm:max-w-md p-0 overflow-hidden border-none shadow-2xl rounded-2xl z-[9999]">
         <div className="flex flex-col h-full bg-white dark:bg-slate-900">
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="text-xl font-bold">
-              {authMode === "login" ? "Welcome back" : authMode === "signup" ? "Create an account" : "Continue as Guest"}
+            <DialogTitle className="text-xl font-extrabold tracking-tight">
+              Your bus prices are one step away!
             </DialogTitle>
-            <DialogDescription>
-              {authMode === "login" ? "Sign in to complete your booking." : authMode === "signup" ? "Sign up to save quotes and book rides." : "We'll securely save your booking to this email."}
+            <DialogDescription className="text-xs text-slate-500">
+              Create an account or login to view your prices and save this quote for future access.
             </DialogDescription>
           </DialogHeader>
 

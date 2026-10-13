@@ -1937,45 +1937,91 @@ export function QuotationAuthDialog({ isOpen, onClose, onSuccess }: { isOpen: bo
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md rounded-2xl p-6">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold">{isLogin ? 'Login to continue' : 'Create an account'}</DialogTitle>
-          <DialogDescription>
-            {isLogin ? 'Enter your email and password to proceed with your booking.' : 'Sign up to manage your bookings and quotations.'}
+      <DialogContent className="sm:max-w-md rounded-2xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <DialogHeader className="space-y-1.5">
+          <DialogTitle className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+            Your bus prices are one step away!
+          </DialogTitle>
+          <DialogDescription className="text-sm text-slate-500 dark:text-slate-400">
+            Create an account or login to view your prices and save this quote for future access.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Social Quick Login Options */}
+        <div className="flex flex-col gap-2.5 mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11 rounded-xl font-bold flex items-center justify-center gap-3 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+            onClick={async () => {
+              setLoading(true);
+              const supabase = createClient();
+              await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+            }}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.33 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.91 0 12s.45 3.85 1.24 5.42l4.04-3.15z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11 rounded-xl font-bold flex items-center justify-center gap-3 bg-black text-white hover:bg-slate-900 border-black dark:border-slate-700"
+            onClick={async () => {
+              setLoading(true);
+              const supabase = createClient();
+              await supabase.auth.signInWithOAuth({ provider: 'apple', options: { redirectTo: window.location.href } });
+            }}
+          >
+            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.63-.78 1.06-1.85.94-2.94-.92.04-2.07.62-2.73 1.4-.58.67-1.1 1.76-.96 2.82 1.03.08 2.11-.53 2.75-1.28"/>
+            </svg>
+            <span>Continue with Apple</span>
+          </Button>
+        </div>
+
+        {/* Divider */}
+        <div className="relative my-3 flex items-center justify-center text-xs uppercase font-bold text-slate-400">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-800"></div></div>
+          <span className="relative bg-white dark:bg-slate-900 px-3 text-[11px] tracking-widest">OR</span>
+        </div>
         
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {!isLogin && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="firstName" className="text-xs font-bold text-slate-700 dark:text-slate-300">First Name</Label>
+                <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 rounded-xl" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required />
+              <div className="space-y-1.5">
+                <Label htmlFor="lastName" className="text-xs font-bold text-slate-700 dark:text-slate-300">Last Name</Label>
+                <Input id="lastName" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 rounded-xl" />
               </div>
             </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-xs font-bold text-slate-700 dark:text-slate-300">Email Address</Label>
+            <Input id="email" type="email" placeholder="name@company.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 rounded-xl" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="text-xs font-bold text-slate-700 dark:text-slate-300">Password</Label>
+            <Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required className="h-10 rounded-xl" />
           </div>
           
-          {error && <div className="text-sm text-red-500 font-medium">{error}</div>}
+          {error && <div className="text-xs text-red-500 font-semibold p-2 bg-red-50 dark:bg-red-950/30 rounded-lg">{error}</div>}
           
-          <Button type="submit" className="w-full h-11 text-white bg-slate-900 rounded-xl hover:bg-slate-800" disabled={loading}>
-            {loading ? 'Please wait...' : isLogin ? 'Login' : 'Create Account'}
+          <Button type="submit" className="w-full h-11 text-white bg-blue-600 hover:bg-blue-700 font-bold rounded-xl shadow-md transition-all" disabled={loading}>
+            {loading ? 'Unlocking prices...' : isLogin ? 'Continue with Email' : 'Create Account & View Prices'}
           </Button>
           
-          <div className="text-center mt-2">
-            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-blue-600 hover:underline bg-transparent border-none cursor-pointer">
-              {isLogin ? "Don't have an account? Sign up" : "Already have an account? Login"}
+          <div className="text-center pt-1">
+            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline bg-transparent border-none cursor-pointer">
+              {isLogin ? "Don't have an account? Sign up" : "Already have an account? Log In"}
             </button>
           </div>
         </form>
