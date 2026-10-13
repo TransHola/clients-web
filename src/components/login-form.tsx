@@ -8,7 +8,7 @@ import { useActionState, useState } from "react"
 import Link from "next/link"
 import { Mail, Lock, ArrowRight, Loader2, ShieldCheck, Eye, EyeOff, Fingerprint } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect } from "react"
 
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -25,6 +25,8 @@ export function LoginForm({
   const [loading, setLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTarget = searchParams.get('redirect')
 
   const {
       register,
@@ -70,7 +72,8 @@ export function LoginForm({
           if (result?.error) {
               setAuthError(result.error)
           } else if (result?.success) {
-              router.push(result.redirectTo || '/')
+              const target = redirectTarget || result.redirectTo || '/'
+              router.push(target)
               router.refresh()
           }
       } catch (err: any) {

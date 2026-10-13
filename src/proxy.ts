@@ -1,15 +1,32 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED_PREFIXES = [
-  '/profile',
-  '/bookings',
-  '/trips',
-  '/billing',
-  '/quotations',
+// Public routes accessible without authentication
+const PUBLIC_PATHS = [
+  '/login',
+  '/register',
+  '/reset-password',
+  '/update-password',
+  '/verify',
+  '/auth',
+  '/api/health',
+  '/favicon.ico',
 ]
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Allow static Next.js assets, public images, icons, and fonts
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/images') ||
+    pathname.startsWith('/brand') ||
+    pathname.startsWith('/static') ||
+    pathname.includes('.')
+  ) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -47,19 +64,24 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const { pathname } = request.nextUrl
-  const isProtected = PROTECTED_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'))
+  const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
 
-  if (!user && isProtected) {
+  // If unauthenticated and visiting a non-public route (including root /), redirect directly to /login
+  if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirect', pathname)
+    if (pathname !== '/') {
+      url.searchParams.set('redirect', pathname + (request.nextUrl.search || ''))
+    } else if (request.nextUrl.search) {
+      url.searchParams.set('redirect', '/' + request.nextUrl.search)
+    }
     return NextResponse.redirect(url)
   }
 
+  // If authenticated and visiting login/register, redirect to dashboard /
   if (user && (pathname === '/login' || pathname === '/register')) {
     const url = request.nextUrl.clone()
-    url.pathname = '/bookings'
+    url.pathname = '/'
     return NextResponse.redirect(url)
   }
 

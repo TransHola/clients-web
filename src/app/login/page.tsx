@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { LoginForm } from "@/components/login-form"
 import { Compass, MapPin, ShieldCheck, Star } from "lucide-react"
 
@@ -81,7 +82,9 @@ export default function Page() {
                 {/* Right Panel: Login Form */}
                 <div className="flex-1 flex items-center justify-center p-8 lg:p-12 bg-white/60 dark:bg-[#020817]/60 backdrop-blur-xl">
                     <div className="w-full max-w-[400px]">
-                        <LoginForm />
+                        <Suspense fallback={<div className="h-64 flex items-center justify-center text-sm text-muted-foreground">Loading...</div>}>
+                            <LoginForm />
+                        </Suspense>
                     </div>
                 </div>
             </div>
