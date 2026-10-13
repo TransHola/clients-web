@@ -42,22 +42,35 @@ export function ClientHeader() {
     <header className="sticky top-0 z-[1000] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
       <div className="flex w-full h-16 items-center justify-between px-4 md:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl overflow-hidden border border-border/60 shadow-sm shrink-0 bg-white dark:bg-black">
+          <Link href="/" className="flex items-center">
+            <div className="w-[42px] h-[42px] flex items-center justify-center shrink-0 -mr-1 -translate-y-0.5">
               <img 
-                src="/images/brand/transhola-linear-mark-dark.jpg" 
-                alt="TransHola" 
-                className="w-full h-full object-cover hidden dark:block" 
+                src="/images/brand/transhola-t-tight-white.png?v=fixed3" 
+                alt="" 
+                width={42}
+                height={42}
+                className="w-full h-full object-contain hidden dark:block" 
               />
               <img 
-                src="/images/brand/transhola-linear-mark-light.jpg" 
-                alt="TransHola" 
-                className="w-full h-full object-cover block dark:hidden" 
+                src="/images/brand/transhola-t-tight-black.png?v=fixed3" 
+                alt="" 
+                width={42}
+                height={42}
+                className="w-full h-full object-contain block dark:hidden" 
               />
             </div>
-            <div className="flex flex-col leading-tight hidden sm:flex">
-              <span className="text-lg font-black tracking-tight text-foreground">TransHola</span>
-              <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground">ONE CLICK TO YOUR ACTIVITY</span>
+            <div className="flex flex-col leading-none hidden sm:flex">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-black tracking-tight text-foreground">
+                  ransHola
+                </span>
+                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                  Client
+                </span>
+              </div>
+              <span className="text-[8px] font-bold text-muted-foreground leading-tight uppercase tracking-[0.14em] mt-1 -ml-2">
+                ONE CLICK TO YOUR ACTIVITY
+              </span>
             </div>
           </Link>
 

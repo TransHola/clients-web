@@ -9,6 +9,17 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 export const metadata: Metadata = {
   title: "TRANSHOLA • Corporate & Group Charter",
   description: "Enterprise Transport Booking Platform",
+  icons: {
+    icon: [
+      { url: '/favicon.svg?v=2026', type: 'image/svg+xml' },
+      { url: '/favicon-32x32.png?v=2026', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48x48.png?v=2026', sizes: '48x48', type: 'image/png' },
+      { url: '/favicon.ico?v=2026' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png?v=2026' },
+    ],
+  },
 };
 
 export default function RootLayout({
@@ -19,6 +30,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="icon" href="/favicon.svg?v=2026" type="image/svg+xml" />
+        <link rel="icon" href="/favicon-32x32.png?v=2026" sizes="32x32" type="image/png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2026" />
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {

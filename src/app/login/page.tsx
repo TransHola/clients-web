@@ -12,11 +12,36 @@ export default function Page() {
             <div className="flex w-full min-h-screen z-10">
                 {/* Left Panel: Corporate Branding & Value Prop */}
                 <div className="hidden lg:flex flex-col justify-between flex-[1.2] p-12 lg:p-16 relative border-r border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-[#020817]/40 backdrop-blur-3xl">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-emerald-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 ring-1 ring-slate-900/5 dark:ring-white/10">
-                            <Compass size={20} strokeWidth={2.5} />
+                    <div className="flex items-center">
+                        <div className="w-[48px] h-[48px] flex items-center justify-center shrink-0 -mr-1.5 -translate-y-0.5">
+                            <img 
+                                src="/images/brand/transhola-t-tight-white.png?v=fixed3" 
+                                alt="" 
+                                width={48}
+                                height={48}
+                                className="w-full h-full object-contain hidden dark:block" 
+                            />
+                            <img 
+                                src="/images/brand/transhola-t-tight-black.png?v=fixed3" 
+                                alt="" 
+                                width={48}
+                                height={48}
+                                className="w-full h-full object-contain block dark:hidden" 
+                            />
                         </div>
-                        <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">TransHola <span className="text-blue-600 dark:text-blue-500 font-medium">Clients</span></span>
+                        <div className="flex flex-col leading-none">
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
+                                    ransHola
+                                </span>
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                    Clients
+                                </span>
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-500 leading-tight uppercase tracking-[0.14em] mt-1 -ml-2">
+                                ONE CLICK TO YOUR ACTIVITY
+                            </span>
+                        </div>
                     </div>
 
                     <div className="max-w-xl my-auto">
