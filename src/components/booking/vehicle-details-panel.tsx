@@ -94,8 +94,8 @@ export function VehicleDetailsPanel({ option, amenities = [], adaRequired = fals
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <h5 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0ea5e9', margin: 0 }}>Requested Amenities</h5>
             </div>
-            <p style={{ fontSize: '10px', color: '#64748b', margin: '0 0 12px', padding: '8px', background: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #cbd5e1' }}>
-              <strong>Note:</strong> The amenities requested below will be based on fleet availability on the day of service.
+            <p style={{ fontSize: '10px', color: '#64748b', margin: '0 0 12px', padding: '8px 10px', background: '#f8fafc', borderRadius: '6px', borderLeft: '3px solid #3b82f6', lineHeight: 1.5 }}>
+              <strong>Operational Policy:</strong> We only guarantee the vehicle itself and passenger capacity. The only specific requirement guaranteed at reservation is ADA accessibility (where applicable). Other onboard amenities are optional and depend on operating company fleet availability.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {amenities.map((am) => {

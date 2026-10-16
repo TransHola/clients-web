@@ -3626,8 +3626,8 @@ export function BookingPanel({
                       {/* Amenities & Extras */}
                       <div>
                         <h5 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', margin: '0 0 12px' }}>Amenities &amp; Features</h5>
-                        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px', lineHeight: 1.5, padding: '12px 14px', background: '#f1f5f9', borderRadius: '10px', borderLeft: '4px solid #94a3b8' }}>
-                          Provided at no extra cost, subject to fleet availability on the day of service.
+                        <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px', lineHeight: 1.5, padding: '12px 14px', background: '#f1f5f9', borderRadius: '10px', borderLeft: '4px solid #3b82f6' }}>
+                          We guarantee the reserved vehicle and passenger capacity. The only specific requirement guaranteed at reservation is ADA accessibility (where applicable). Other onboard amenities are optional, not guaranteed, and subject to operating company fleet availability.
                         </p>
 
                         <div style={{ marginBottom: '24px' }}>
