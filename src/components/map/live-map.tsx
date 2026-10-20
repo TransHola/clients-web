@@ -295,10 +295,8 @@ function MapController({
         if (all.length >= 2) {
           const bounds = L.latLngBounds(all)
           if (bounds.isValid()) {
-            const isMobile = window.innerWidth < 768;
-            const leftOffset = isMobile ? 0 : (pinsLocked ? 0 : 650);
-            const pt = [leftOffset + 40, 60] as [number, number];
-            const pb = [40, 60] as [number, number];
+            const pt = [40, 40] as [number, number];
+            const pb = [40, 40] as [number, number];
             map.fitBounds(bounds, { paddingTopLeft: pt, paddingBottomRight: pb, maxZoom: 15, animate, duration: animate ? 1.2 : 0 })
           }
         } else if (all.length === 1) {
