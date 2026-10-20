@@ -368,7 +368,15 @@ export function BookingPanel({
             setShowReturn(false);
             setIsShuttle(false);
           }
-          if (activeDaySrc.stops?.length) setStops(activeDaySrc.stops);
+          const rawStops = activeDaySrc.stops || d.stops || [];
+          if (rawStops.length) {
+            setStops(rawStops.map((s: any, idx: number) => ({
+              id: String(s.id || idx + 1),
+              address: typeof s === 'string' ? s : (s.address || s.name || s.location || s.loc?.address || ''),
+              loc: s.loc || (s.lat && s.lon ? { address: s.address, lat: s.lat, lon: s.lon } : null),
+              stopDurationMin: typeof s.stopDurationMin === 'number' ? s.stopDurationMin : (typeof s.waitMin === 'number' ? s.waitMin : 1)
+            })));
+          }
           if (activeDaySrc.pickupWaitMin !== undefined) setPickupWaitMin(activeDaySrc.pickupWaitMin);
           if (activeDaySrc.dropoffWaitMin !== undefined) setDropoffWaitMin(activeDaySrc.dropoffWaitMin);
 
@@ -462,7 +470,15 @@ export function BookingPanel({
       setShowReturn(false);
       setIsShuttle(false);
     }
-    if (activeDaySrc.stops?.length) setStops(activeDaySrc.stops);
+    const rawStops = activeDaySrc.stops || d.stops || [];
+    if (rawStops.length) {
+      setStops(rawStops.map((s: any, idx: number) => ({
+        id: String(s.id || idx + 1),
+        address: typeof s === 'string' ? s : (s.address || s.name || s.location || s.loc?.address || ''),
+        loc: s.loc || (s.lat && s.lon ? { address: s.address, lat: s.lat, lon: s.lon } : null),
+        stopDurationMin: typeof s.stopDurationMin === 'number' ? s.stopDurationMin : (typeof s.waitMin === 'number' ? s.waitMin : 1)
+      })));
+    }
     if (activeDaySrc.pickupWaitMin !== undefined) setPickupWaitMin(activeDaySrc.pickupWaitMin);
     if (activeDaySrc.dropoffWaitMin !== undefined) setDropoffWaitMin(activeDaySrc.dropoffWaitMin);
     if (d.multiDayStore) setMultiDayStore(d.multiDayStore);
