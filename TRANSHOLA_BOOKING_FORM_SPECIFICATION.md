@@ -166,17 +166,263 @@ The TransHola booking and pricing form is the primary conversion and dispatch fu
 
 ---
 
-### Scenario 10: Recommended Fleets & Passenger Capacity Engine
-When the user clicks `⚡ REQUEST PRICE`, the rate engine filters and highlights vehicle recommendations based on passenger headcount:
+### Scenario 10: Intelligent Fleet Recommendation & Passenger Capacity Engine
 
-| Fleet Category | Seat Capacity | Luggage Capacity | Key Amenities | Ideal For |
-| :--- | :--- | :--- | :--- | :--- |
-| **Executive Sedan** | 1 – 3 Pax | 2 Large Bags | Leather, Wi-Fi, Water | VIPs, Solo Executives |
-| **Executive MPV / SUV** | 4 – 6 Pax | 4 Large Bags | Dual AC, Reclining, Wi-Fi | Small Teams, VIP Families |
-| **Luxury Van** | 7 – 14 Pax | 10 Bags | High Roof, USB, Dual AC | Corporate Delegations |
-| **Executive Minicoach** | 15 – 28 Pax | 20 Bags | Leather Seats, Rear Trunk | Airport Crews, Events |
-| **Executive Midicoach** | 29 – 36 Pax | 30 Bags | Dual AV, Reclining, Luggage | Wedding Groups, Mid-size Tours |
-| **Luxury Motorcoach** | 37 – 56 Pax | Full Underfloor Bays | Restroom, Dual AV, Wi-Fi | Large Conferences, Tour Groups |
+The TransHola Fleet Recommendation & Passenger Capacity Engine is a fully automated, configuration-driven, and real-time availability-aware optimization system. Operating as a distributed microservice (`services/fleet-optimization-engine` on port `4010`) and integrated into both the client booking portal ([client.transhola.com](https://client.transhola.com)) and the public booking console ([transhola.com/get-price](https://transhola.com/get-price)), it dynamically solves passenger capacity matching while strictly adhering to Super Admin controls, country-specific vehicle registries, and real-time commercial operator fleet availability.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        SUPER ADMIN CENTRAL CONTROL MATRIX                              │
+│  • Country-Specific Solutions (`country_solutions`)                                    │
+│  • Approved Vehicle Types & Cap Limits (`country_solution_vehicles`: max_pax, luggage) │
+│  • Regulatory Compliance & License Rules (`country_compliance_condition_vehicles`)     │
+└──────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                           │ Dynamic Rules & Active Catalog
+                                           ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│             REAL-TIME OPERATOR FLEET & DEPOT AVAILABILITY PIPELINE                     │
+│  • Auto-Expanding Geo-Radius (`15km → 30km → 50km → 75km → 100km`)                     │
+│  • Real-Time Depot Telemetry, Schedule Calendars & Turnaround Buffers                  │
+│  • Compliance Gate: Excludes unverified, inactive, or lapsed carrier fleets            │
+└──────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                           │ Verified Available Fleet Inventory
+                                           ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│              INTELLIGENT PASSENGER CAPACITY & CONVOY OPTIMIZER                         │
+│  • Single-Vehicle Direct Match (Headcount ≤ max vehicle capacity)                      │
+│  • Multi-Vehicle Knapsack Convoy Solver (Headcount > single vehicle capacity)          │
+│  • Shuttle Headway & Loop Rotation Engine (Headway-driven fleet sizing)                │
+│  • Multi-Objective Optimization: Min Cost • Min Vehicles • Lowest CO2 • VIP Tier      │
+└──────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                           │ Ranked Candidate Solutions
+                                           ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                  CLIENT BOOKING CONSOLE & INSTANT QUOTATION UI                         │
+│  • Dynamic Fleet Cards with itemized vehicle allocations (e.g. 1x Coach + 1x Minibus)   │
+│  • Guaranteed Availability Badge & 100% Rate Lock                                      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 1. Dynamic Fleet Configuration (Pillar 1)
+
+1. **Country & Market Resolution:**
+   - Fleet recommendations never assume universal vehicle types. Instead, the engine resolves the active market via the origin point's country code (`country_code`: e.g. `AE`, `US`, `GB`, `SA`, `FR`, `DE`, `ES`).
+   - Retrieves active vehicle classifications from `country_solutions` and `country_solution_vehicles`:
+     - **United Arab Emirates (AE):** Executive Sedan (3), Luxury SUV (6), VIP Sprinter Van (14), Executive Minibus (24), Executive Midicoach (36), Luxury Motorcoach (56), High-Capacity Double Decker (81).
+     - **United States (US):** Premium Sedan (3), Executive SUV (6), Passenger Sprinter (14), Minicoach (28), Standard School Bus (44/72), Motorcoach (56).
+     - **United Kingdom & Europe (GB/EU):** Executive Chauffeur Car (3), Luxury V-Class Van (7), Midi Coach (33), Long-Distance Touring Coach (53/56).
+2. **Approved & Active Fleet Filtering:**
+   - Only vehicle classifications flagged as `is_active = true` within the Super Admin country solution are evaluated.
+   - Deactivated, suspended, or unapproved categories in a specific country are omitted from the calculation matrix.
+3. **Dynamic Geo-Spatial Radius & Carrier Retrieval:**
+   - From the trip origin GPS coordinates (`lat`, `lng`), the engine scans certified operator depots using Haversine indexing.
+   - Default search radius begins at **15 km**. If matching operator inventory is constrained, the radius automatically expands through predefined milestones:
+     $$\text{Radius Path: } 15\text{ km} \longrightarrow 30\text{ km} \longrightarrow 50\text{ km} \longrightarrow 75\text{ km} \longrightarrow 100\text{ km}$$
+   - Only operators with active operating authorities in the requested jurisdiction and verified depot locations within the radius are considered eligible.
+
+---
+
+#### 2. Intelligent Passenger Capacity Matching (Pillar 2)
+
+The engine models fleet allocation as a **Multi-Objective Bounded Knapsack Optimization Problem**:
+
+$$\min \quad Z = \alpha \cdot \text{Cost} + \beta \cdot N_{\text{vehicles}} + \gamma \cdot \text{CO}_2$$
+
+$$\text{Subject to:} \quad \sum_{i=1}^{k} s_i \cdot x_i \ge P \quad (\text{Passenger Demand})$$
+
+$$\sum_{i=1}^{k} l_i \cdot x_i \ge L \quad (\text{Luggage Volume Constraint})$$
+
+$$x_i \le A_i \quad (\text{Real-Time Available Vehicles of Type } i)$$
+
+Where:
+- $P$ = Total booking passenger headcount ($1 \le P \le 1,000+$)
+- $L$ = Total luggage item count
+- $s_i$ = Seating capacity of vehicle category $i$ (configured by Super Admin in `country_solution_vehicles.max_pax`)
+- $l_i$ = Luggage capacity of vehicle category $i$ (`country_solution_vehicles.max_luggage`)
+- $x_i$ = Integer quantity of vehicle category $i$ deployed
+- $A_i$ = Number of verified available, active, compliant vehicles in radius
+- $\alpha, \beta, \gamma$ = Super Admin optimization priority weights (`balanced`, `lowest-cost`, `min-vehicles`, `lowest-co2`)
+
+##### Allocation Strategies Generated:
+
+1. **Single-Vehicle Direct Match ($P \le \max(s_i)$):**
+   - For passenger counts that fit within a single vehicle, the engine identifies the closest vehicle size that satisfies $s_i \ge P$ with minimal empty seat waste, preventing a 2-passenger booking from receiving a 56-passenger bus.
+   - Evaluates multiple comfort tiers (e.g. for 4 passengers: *Executive Sedan [Exceeded]* vs *Executive SUV [Best Match]* vs *Luxury Sprinter Van [VIP Upgrade]*).
+
+2. **Uniform Grand Convoy (Minimum Vehicle Count Strategy):**
+   - When $P > 56$, the engine calculates the minimum number of identical largest-available commercial coaches:
+     $$x_{\text{coach}} = \left\lceil \frac{P}{s_{\text{coach}}} \right\rceil$$
+   - Maximizes group cohesion and simplifies dispatch management with identical vehicle specifications and simultaneous arrival.
+
+3. **Optimal Mixed Convoy (Lowest Cost & Minimal Waste Strategy):**
+   - Employs branch-and-bound integer programming to find mixed combinations that minimize empty seats and total fleet hire costs.
+   - *Example:* For **75 Passengers**:
+     - *Uniform Fleet:* $2\times 56\text{-Pax Motorcoaches} = 112\text{ seats } (37\text{ empty seats})$.
+     - *Optimized Mixed Convoy:* $1\times 56\text{-Pax Motorcoach} + 1\times 24\text{-Pax Minibus} = 80\text{ seats } (\mathbf{5}\text{ empty seats buffer})$.
+     - Delivers up to 28% cost savings for corporate clients while ensuring complete seated capacity.
+
+4. **Shuttle Frequency & Loop Rotation Strategy (`activityType === 'shuttle'`):**
+   - For recurring shuttle loops (corporate commuter campus, conference circuits, airport loops), the vehicle count is calculated from cycle time and target dispatch headway ($H_{\text{target}}$):
+     $$T_{\text{cycle}} = 2 \times T_{\text{one-way}} + T_{\text{dwell}}$$
+     $$N_{\text{active}} = \max\left(1, \; \left\lceil \frac{T_{\text{cycle}}}{H_{\text{target}}} \right\rceil\right)$$
+   - Computes actual headway, round trips per hour, and total moving passenger throughput per hour ($P_{\text{hourly}} = N_{\text{active}} \times s_{\text{vehicle}} \times \text{TripsPerHour}$).
+
+5. **Ancillary Demand Constraints:**
+   - **Luggage Constraints ($L$):** Automatically upgrades fleet recommendations (e.g. from Sedan to SUV or Minicoach with rear luggage compartment) if passenger luggage exceeds trunk capacity.
+   - **Accessibility & ADA Requirements:** If wheelchair/ADA accommodations are requested, the engine mandates vehicles with certified hydraulic wheelchair lifts and tracks `ada_vehicle_count`.
+
+---
+
+#### 3. Real-Time Operator Availability & Compliance Verification (Pillar 3)
+
+The recommendation engine strictly refuses to show phantom fleet quotes. Every generated option is backed by verified commercial capacity:
+
+1. **Carrier Compliance Gate:**
+   - A vehicle is strictly marked **ineligible** if any of the following apply:
+     - Carrier company status is not `active` or `verified`.
+     - Required regulatory vehicle documents (commercial registration, annual roadworthiness inspection, public passenger transport permit) are expired or pending audit.
+     - Assigned chauffeur lacks the mandatory commercial driver qualification (`requires_cdl` check against `driver_licenses`).
+2. **Calendar Overlap & Turnaround Buffers:**
+   - The engine checks existing booking assignments for each physical vehicle in the target region for the specified date and operational time window ($[T_{\text{start}} - \Delta_{\text{reposition}}, \; T_{\text{end}} + \Delta_{\text{turnaround}}]$).
+   - If an operator's fleet is committed to another corporate charter or school transit run during the requested window, that specific vehicle count $A_i$ is decremented in the availability pool.
+3. **Reactive Re-calculation:**
+   - Changes to the client form (headcount stepper increment, date picker change, intermediate stop added, or pickup address change) trigger an immediate debounced re-evaluation ($\le 120\text{ms}$).
+   - The UI displays live fulfillment assurance chips:
+     - 🟢 **100% Verified Carrier Availability:** At least 2 verified depots with idle capacity within 15 km.
+     - 🟡 **Expanded Regional Coverage:** Capacity confirmed via the 30–50 km expanded radius.
+     - 🔴 **Capacity Alert:** Date/time peak capacity reached; alternative vehicle combination or adjacent time window proposed.
+
+---
+
+#### 4. Centralized Super Admin Control (Pillar 4)
+
+All recommendation behavior is governed dynamically through the Super Admin Mission Control portal ([superadmin.transhola.com](https://superadmin.transhola.com)):
+
+| Control Dimension | Super Admin Entity / Table | Governed Parameters |
+| :--- | :--- | :--- |
+| **Market Solutions** | `country_solutions` | Active status per country, solution types (One-Way, Charter, Shuttle), region definitions |
+| **Fleet Capacity & Limits** | `country_solution_vehicles` | `max_pax`, `max_luggage`, display order, default vehicle classifications |
+| **Amenity Rules** | `country_vehicle_amenities` | Wi-Fi, Restrooms, Leather, Conference tables, Child seats, Surcharge pricing |
+| **Compliance Conditions** | `country_compliance_condition_vehicles` | Mandatory carrier licenses, CDL endorsements, vehicle age caps |
+| **Dynamic Rate Cards** | `country_vehicle_rates`, `country_surge_rules` | Base fares, per-km rates, hourly minimums, seasonal / peak multipliers |
+| **Optimizer Priorities** | Super Admin Engine Configuration | Weights for $\alpha$ (Cost), $\beta$ (Fleet Consolidation), $\gamma$ (CO2 ESG Score) |
+
+**Zero-Hardcoding Guarantee:** The engine contains zero hardcoded passenger capacities or vehicle matrices in application code. When a Super Admin updates `country_solution_vehicles.max_pax` (e.g. reclassifying executive midicoaches from 36 to 38 seats), the fleet optimization engine immediately ingests the revised boundary condition on the very next query without application downtime or rebuilds.
+
+---
+
+#### 5. Data Contracts & Microservice Protocol
+
+##### Microservice Endpoint
+```http
+POST /api/v1/optimize
+Host: 127.0.0.1:4010
+Content-Type: application/json
+```
+
+##### Request Payload
+```json
+{
+  "passengers": 75,
+  "activityType": "one-way",
+  "distanceKm": 48.5,
+  "durationMinutes": 42,
+  "tripDate": "2026-10-24",
+  "startLocation": { "lat": 24.4539, "lng": 54.3773 },
+  "startAddress": "Al Reem Island, Abu Dhabi, UAE",
+  "currency": "AED",
+  "priority": "balanced",
+  "luggageCount": 60,
+  "allowMixedFleet": true
+}
+```
+
+##### Response Structure
+```json
+{
+  "status": "success",
+  "query": {
+    "passengers": 75,
+    "activityType": "one-way",
+    "distanceKm": 48.5,
+    "durationMinutes": 42,
+    "currency": "AED",
+    "priority": "balanced"
+  },
+  "bestRecommendation": {
+    "solutionId": "optimal_mixed_convoy",
+    "strategy": "cost-optimized",
+    "title": "1x Luxury Motorcoach + 1x Executive Minibus",
+    "badge": "Recommended Convoy",
+    "summary": "Optimized knapsack combination precisely matching 75 passengers with minimum excess seats (5 seats buffer).",
+    "vehicles": [
+      {
+        "vehicleId": "coach",
+        "vehicleName": "Luxury Motorcoach",
+        "category": "Coach",
+        "quantity": 1,
+        "seatsPerVehicle": 56,
+        "totalSeats": 56,
+        "totalLuggage": 56,
+        "unitCost": 3073,
+        "subtotalCost": 3073
+      },
+      {
+        "vehicleId": "minibus",
+        "vehicleName": "Executive Minibus",
+        "category": "Minibus",
+        "quantity": 1,
+        "seatsPerVehicle": 24,
+        "totalSeats": 24,
+        "totalLuggage": 24,
+        "unitCost": 1734,
+        "subtotalCost": 1734
+      }
+    ],
+    "totalVehicles": 2,
+    "totalSeats": 80,
+    "seatUtilizationPercent": 94,
+    "totalLuggageCapacity": 80,
+    "finalCost": 4807,
+    "currency": "AED",
+    "costPerPassenger": 64,
+    "totalCo2Kg": 33.47,
+    "co2GramsPerPassengerKm": 9,
+    "availability": {
+      "status": "guaranteed",
+      "searchRadiusKm": 15,
+      "radiusExpanded": false,
+      "verifiedDepotsCount": 3,
+      "availableVehiclesInRadius": 18,
+      "fulfillmentGuaranteeText": "Direct wholesale rates backed by 3 certified depots in your pickup radius.",
+      "isGuaranteed": true
+    }
+  },
+  "solutions": [ ... ],
+  "benchmark": {
+    "computeTimeMicroseconds": 412,
+    "branchesExplored": 16,
+    "candidateSolutionsFound": 3,
+    "memoryRssMB": 12.4
+  }
+}
+```
+
+---
+
+#### 6. Client Portal & Public Web UI Presentation Matrix
+
+1. **Single-Vehicle Cards:** Displayed with high-resolution LHD 3D vehicle photography, seating pill (e.g. `Up to 56 Pax`), luggage capacity, verified amenities, and transparent guaranteed fare.
+2. **Convoy Fleet Cards:** When multiple vehicles are required, the UI displays a multi-unit convoy capsule:
+   - Header badge: `Convoy Allocation (2 Vehicles)`
+   - Breakdown badges: `1x Luxury Motorcoach (56 Pax)` + `1x Executive Minibus (24 Pax)`
+   - Aggregate metrics: Total Seated Capacity (`80 Seats`), Group Utilization (`94%`), Price per Passenger (`AED 64 / pax`).
+3. **Capacity Warning & Guardrail:** If an enterprise user inputs 1,000+ passengers, the engine dynamically recommends mass-transit convoy logistics ($18\times \text{Coaches}$) with dedicated convoy dispatch coordinator assignment.
+4. **Instant Handoff to Quotation / Checkout:** Selection transfers the full vehicle allocation array directly into the Instant Quotation PDF generator (Scenario 11) or the Checkout Handoff (Scenario 12) without data loss.
+
+---
 
 ---
 
