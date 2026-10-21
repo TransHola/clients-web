@@ -71,7 +71,7 @@ export default function RootLayout({
         }} />
       </head>
       <body
-        className={`${inter.variable} font-sans`}
+        className={`${inter.variable} font-sans bg-background text-foreground min-h-screen`}
       >
         <TooltipProvider>
           <GlobalNetworkErrorGuard />
