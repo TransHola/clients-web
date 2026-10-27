@@ -12,6 +12,28 @@ const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
   },
+  async rewrites() {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.KUBERNETES_SERVICE_HOST;
+    let supabaseUrl = 
+      process.env.SUPABASE_INTERNAL_URL || 
+      process.env.SUPABASE_URL || 
+      (isProd ? 'http://supabase-kong:8000' : 'http://127.0.0.1:54321');
+
+    if (isProd && (supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('localhost'))) {
+      supabaseUrl = 'http://supabase-kong:8000';
+    }
+
+    return [
+      {
+        source: '/auth/v1/:path*',
+        destination: `${supabaseUrl}/auth/v1/:path*`,
+      },
+      {
+        source: '/rest/v1/:path*',
+        destination: `${supabaseUrl}/rest/v1/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

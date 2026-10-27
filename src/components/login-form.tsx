@@ -68,13 +68,27 @@ export function LoginForm({
       formData.append("password", data.password)
 
       try {
-          const result: any = await login(formData)
+          // Tier 1: Next.js Server Action
+          let result: any = null
+          try {
+              result = await login(formData)
+          } catch (actionErr: any) {
+              console.warn("Server action failed or hash mismatch, falling back to API route:", actionErr)
+              // Tier 2: Resilient Fallback to Same-Origin API Route (bypasses build hash mismatches)
+              const res = await fetch("/api/auth/login", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email: data.email, password: data.password })
+              })
+              result = await res.json()
+          }
+
           if (result?.error) {
               setAuthError(result.error)
           } else if (result?.success) {
               const target = redirectTarget || result.redirectTo || '/'
-              router.push(target)
-              router.refresh()
+              window.location.href = target
+              return
           }
       } catch (err: any) {
           console.error(err)

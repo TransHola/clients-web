@@ -1,33 +1,49 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+const DEFAULT_SUPABASE_URL = 'http://127.0.0.1:54321'
+const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
+
+export function getInternalSupabaseUrl(): string {
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.KUBERNETES_SERVICE_HOST
+    let url = 
+        process.env.SUPABASE_INTERNAL_URL || 
+        process.env.SUPABASE_URL || 
+        process.env.NEXT_PUBLIC_SUPABASE_URL || 
+        DEFAULT_SUPABASE_URL
+
+    if (isProd && (url.includes('127.0.0.1') || url.includes('localhost'))) {
+        return 'http://supabase-kong:8000'
+    }
+
+    return url
+}
+
 export async function createClient() {
     const cookieStore = await cookies()
+    const supabaseUrl = getInternalSupabaseUrl()
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY
 
     return createServerClient(
-        process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        supabaseUrl,
+        supabaseKey,
         {
+            cookieOptions: {
+                name: 'sb-client-session',
+                path: '/',
+                sameSite: 'lax'
+            },
             cookies: {
-                get(name: string) {
-                    return cookieStore.get(name)?.value
+                getAll() {
+                    return cookieStore.getAll()
                 },
-                set(name: string, value: string, options: CookieOptions) {
+                setAll(cookiesToSet) {
                     try {
-                        cookieStore.set({ name, value, ...options })
-                    } catch (error) {
-                        // The `set` method was called from a Server Component.
-                        // This can be ignored if you have middleware refreshing
-                        // user sessions.
-                    }
-                },
-                remove(name: string, options: CookieOptions) {
-                    try {
-                        cookieStore.set({ name, value: '', ...options })
-                    } catch (error) {
-                        // The `delete` method was called from a Server Component.
-                        // This can be ignored if you have middleware refreshing
-                        // user sessions.
+                        cookiesToSet.forEach(({ name, value, options }) =>
+                            cookieStore.set(name, value, options)
+                        )
+                    } catch {
+                        // Handled when called from Server Component
                     }
                 },
             },
