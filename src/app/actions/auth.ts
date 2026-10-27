@@ -5,19 +5,67 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-export async function login(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
+import { headers } from 'next/headers'
+import {
+  extractClientIp,
+  validateAuthInputs,
+  checkLoginRateLimit,
+  recordLoginFailure,
+  recordLoginSuccess,
+  enforceConstantTime,
+  ALLOWED_CLIENT_ROLES,
+  PROHIBITED_OPERATOR_ROLES,
+  sanitizeAuthError
+} from '@/lib/security/authGuard'
 
+export async function login(formData: FormData) {
+  const startTime = Date.now()
+  let clientIp = '127.0.0.1'
+
+  try {
+    const reqHeaders = await headers()
+    clientIp = extractClientIp(reqHeaders)
+  } catch {
+    // Fallback in edge runtimes
+  }
+
+  const rawEmail = formData.get('email') as string
+  const rawPassword = formData.get('password') as string
+
+  // 1. Rigorous input validation & Hash-Flooding DoS mitigation
+  const validation = validateAuthInputs(rawEmail, rawPassword)
+  if (!validation.isValid || !validation.normalizedEmail) {
+    await enforceConstantTime(startTime, 300)
+    return { error: validation.error || "Email and password are required." }
+  }
+
+  const normalizedEmail = validation.normalizedEmail
+
+  // 2. Sliding-Window Adaptive Rate Limiting
+  const rateLimit = checkLoginRateLimit(clientIp, normalizedEmail)
+  if (!rateLimit.allowed) {
+    await enforceConstantTime(startTime, 300)
+    return { error: rateLimit.error }
+  }
+
+  // 3. Supabase Authentication
   const supabase = await createClient()
 
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+    email: normalizedEmail,
+    password: rawPassword,
   })
 
   if (error) {
-    return { error: error.message }
+    recordLoginFailure(clientIp, normalizedEmail)
+    await enforceConstantTime(startTime, 350)
+    return { error: sanitizeAuthError(error) }
+  }
+
+  if (!data?.user) {
+    recordLoginFailure(clientIp, normalizedEmail)
+    await enforceConstantTime(startTime, 350)
+    return { error: "Authentication failed. No user identity returned." }
   }
 
   // 🛡️ ROLE & PORTAL ISOLATION GUARD:
@@ -27,22 +75,36 @@ export async function login(formData: FormData) {
     .eq('id', data.user.id)
     .maybeSingle()
 
-  const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase()
+  const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase().trim()
+  const status = (profile?.status || '').toLowerCase().trim()
+
+  if (status === 'suspended' || status === 'banned' || status === 'inactive') {
+    await supabase.auth.signOut()
+    recordLoginFailure(clientIp, normalizedEmail)
+    await enforceConstantTime(startTime, 350)
+    return { error: "Access denied. Your account has been suspended or deactivated." }
+  }
 
   // Strictly isolate portals: Fleet Operators cannot login as clients
-  if (['operator', 'fleet_operator', 'driver', 'dispatcher'].includes(role)) {
+  if ((PROHIBITED_OPERATOR_ROLES as readonly string[]).includes(role)) {
     await supabase.auth.signOut()
+    recordLoginFailure(clientIp, normalizedEmail)
+    await enforceConstantTime(startTime, 350)
     return { 
       error: "Access Denied: This account is registered as a Fleet Operator. Please log in at the Fleet Operators portal (operator.transhola.com)." 
     }
   }
 
-  // Allow clients, customers, corporate/gov accounts, and administrative accounts (superadmin/admin)
-  const allowedRoles = ['client', 'customer', 'corporate', 'government', 'superadmin', 'super_admin', 'admin', '']
-  if (role && !allowedRoles.includes(role)) {
+  // Allow clients, customers, corporate/gov accounts, and administrative accounts
+  if (role && !(ALLOWED_CLIENT_ROLES as readonly string[]).includes(role)) {
     await supabase.auth.signOut()
+    recordLoginFailure(clientIp, normalizedEmail)
+    await enforceConstantTime(startTime, 350)
     return { error: "Access Denied: Unauthorized role for this portal." }
   }
+
+  // Success: clear failed attempts
+  recordLoginSuccess(clientIp, normalizedEmail)
 
   // If status is still Pending Verification, route to verify with both email & phone params
   const userPhone = profile?.phone || profile?.phone_number || data.user.user_metadata?.phone || ''
@@ -50,7 +112,7 @@ export async function login(formData: FormData) {
     revalidatePath('/', 'layout')
     return { 
       success: true, 
-      redirectTo: `/verify?email=${encodeURIComponent(email)}&phone=${encodeURIComponent(userPhone)}` 
+      redirectTo: `/verify?email=${encodeURIComponent(normalizedEmail)}&phone=${encodeURIComponent(userPhone)}` 
     }
   }
 
@@ -62,20 +124,26 @@ export async function login(formData: FormData) {
 }
 
 export async function register(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
+  const email = (formData.get('email') as string || '').trim().toLowerCase()
+  const password = formData.get('password') as string || ''
   
   // Custom fields
-  const firstName = formData.get('firstName') as string
-  const lastName = formData.get('lastName') as string
-  const entityName = formData.get('entityName') as string
-  const phone = formData.get('phone') as string
+  const firstName = (formData.get('firstName') as string || '').slice(0, 100).trim()
+  const lastName = (formData.get('lastName') as string || '').slice(0, 100).trim()
+  const entityName = (formData.get('entityName') as string || '').slice(0, 150).trim()
+  const phone = (formData.get('phone') as string || '').slice(0, 30).trim()
   const isCompany = formData.get('isCompany') === 'true'
+
+  // Input validation
+  const validation = validateAuthInputs(email, password)
+  if (!validation.isValid || !validation.normalizedEmail) {
+    return { error: validation.error || "Valid email and password are required." }
+  }
 
   const supabase = await createClient()
 
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: validation.normalizedEmail,
     password,
     options: {
       data: {
@@ -91,7 +159,7 @@ export async function register(formData: FormData) {
   })
 
   if (error) {
-    return { error: error.message }
+    return { error: sanitizeAuthError(error) }
   }
   
   // NOTE: We insert the profile directly into the 'profiles' table.
