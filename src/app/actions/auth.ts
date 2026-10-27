@@ -29,7 +29,7 @@ export async function login(formData: FormData) {
 
   const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase()
 
-  // Strictly isolate portals: Operators and SuperAdmins cannot login as clients
+  // Strictly isolate portals: Fleet Operators cannot login as clients
   if (['operator', 'fleet_operator', 'driver', 'dispatcher'].includes(role)) {
     await supabase.auth.signOut()
     return { 
@@ -37,14 +37,9 @@ export async function login(formData: FormData) {
     }
   }
 
-  if (['superadmin', 'super_admin'].includes(role)) {
-    await supabase.auth.signOut()
-    return { 
-      error: "Access Denied: Administrative accounts cannot log in to the Client portal. Please use admin.transhola.com." 
-    }
-  }
-
-  if (role && !['client', 'customer', ''].includes(role)) {
+  // Allow clients, customers, corporate/gov accounts, and administrative accounts (superadmin/admin)
+  const allowedRoles = ['client', 'customer', 'corporate', 'government', 'superadmin', 'super_admin', 'admin', '']
+  if (role && !allowedRoles.includes(role)) {
     await supabase.auth.signOut()
     return { error: "Access Denied: Unauthorized role for this portal." }
   }
