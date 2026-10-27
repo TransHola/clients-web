@@ -23,7 +23,6 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/brand') ||
     pathname.startsWith('/static') ||
     pathname.startsWith('/api/') ||
-    pathname.startsWith('/auth/v1') ||
     pathname.startsWith('/rest/v1') ||
     pathname.includes('.')
   ) {
