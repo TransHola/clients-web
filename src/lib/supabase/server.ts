@@ -50,3 +50,16 @@ export async function createClient() {
         }
     )
 }
+
+const DEFAULT_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx1fZTxczMWUpAeEYczHX0p_hh338b_BM0c'
+
+export function createAdminClient() {
+    const supabaseUrl = getInternalSupabaseUrl()
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || DEFAULT_SERVICE_ROLE_KEY
+    return createServerClient(supabaseUrl, serviceRoleKey, {
+        cookies: {
+            getAll() { return [] },
+            setAll() {}
+        }
+    })
+}

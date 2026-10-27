@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import {
     extractClientIp,
@@ -54,47 +54,37 @@ export async function POST(request: Request) {
             )
         }
 
-        // 3. Supabase Auth
-        const supabase = await createClient()
+        // 3. Cryptographic Password Verification via Postgres pgcrypto RPC
+        const adminClient = createAdminClient()
+        const { data: verifiedUser, error: verifyError } = await (adminClient as any).rpc(
+            'verify_user_credentials',
+            {
+                p_email: normalizedEmail,
+                p_password: password
+            }
+        )
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password: password,
-        })
-
-        if (error) {
-            recordLoginFailure(clientIp, normalizedEmail)
-            await enforceConstantTime(startTime, 350)
-            const safeError = sanitizeAuthError(error)
-            const is503 = safeError.includes('unreachable')
-            return NextResponse.json(
-                { error: safeError },
-                { status: is503 ? 503 : 401 }
-            )
-        }
-
-        if (!data?.user) {
+        if (verifyError || !verifiedUser || !verifiedUser.id) {
             recordLoginFailure(clientIp, normalizedEmail)
             await enforceConstantTime(startTime, 350)
             return NextResponse.json(
-                { error: "Authentication failed. No user identity returned." },
+                { error: "Invalid email or password." },
                 { status: 401 }
             )
         }
 
         // 4. Role & Portal Isolation Guard
-        const { data: profile } = await supabase
+        const { data: profile } = await (adminClient as any)
             .from('profiles')
             .select('role, status, phone, phone_number')
-            .eq('id', data.user.id)
+            .eq('id', verifiedUser.id)
             .maybeSingle()
 
-        const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase().trim()
+        const role = (profile?.role || verifiedUser.user_metadata?.role || '').toLowerCase().trim()
         const status = (profile?.status || '').toLowerCase().trim()
 
         // Block suspended or deactivated accounts
         if (status === 'suspended' || status === 'banned' || status === 'inactive') {
-            await supabase.auth.signOut()
             recordLoginFailure(clientIp, normalizedEmail)
             await enforceConstantTime(startTime, 350)
             return NextResponse.json(
@@ -105,7 +95,6 @@ export async function POST(request: Request) {
 
         // Prohibit Fleet Operators from logging into Client Portal
         if ((PROHIBITED_OPERATOR_ROLES as readonly string[]).includes(role)) {
-            await supabase.auth.signOut()
             recordLoginFailure(clientIp, normalizedEmail)
             await enforceConstantTime(startTime, 350)
             return NextResponse.json(
@@ -116,7 +105,6 @@ export async function POST(request: Request) {
 
         // Verify role is permitted
         if (role && !(ALLOWED_CLIENT_ROLES as readonly string[]).includes(role)) {
-            await supabase.auth.signOut()
             recordLoginFailure(clientIp, normalizedEmail)
             await enforceConstantTime(startTime, 350)
             return NextResponse.json(
@@ -125,10 +113,17 @@ export async function POST(request: Request) {
             )
         }
 
+        // 5. Establish authenticated session
+        const supabase = await createClient()
+        await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: password,
+        })
+
         // Success: Clear failed attempts
         recordLoginSuccess(clientIp, normalizedEmail)
 
-        const userPhone = profile?.phone || profile?.phone_number || data.user.user_metadata?.phone || ''
+        const userPhone = profile?.phone || profile?.phone_number || verifiedUser.user_metadata?.phone || ''
         if (profile?.status === 'Pending Verification') {
             return NextResponse.json({
                 success: true,

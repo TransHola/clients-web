@@ -1,7 +1,7 @@
 'use server'
 import crypto from 'crypto';
 import twilio from 'twilio';
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
@@ -48,38 +48,33 @@ export async function login(formData: FormData) {
     return { error: rateLimit.error }
   }
 
-  // 3. Supabase Authentication
-  const supabase = await createClient()
+  // 3. Cryptographic Password Verification via Postgres pgcrypto RPC
+  const adminClient = createAdminClient()
+  const { data: verifiedUser, error: verifyError } = await (adminClient as any).rpc(
+    'verify_user_credentials',
+    {
+      p_email: normalizedEmail,
+      p_password: rawPassword
+    }
+  )
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: normalizedEmail,
-    password: rawPassword,
-  })
-
-  if (error) {
+  if (verifyError || !verifiedUser || !verifiedUser.id) {
     recordLoginFailure(clientIp, normalizedEmail)
     await enforceConstantTime(startTime, 350)
-    return { error: sanitizeAuthError(error) }
-  }
-
-  if (!data?.user) {
-    recordLoginFailure(clientIp, normalizedEmail)
-    await enforceConstantTime(startTime, 350)
-    return { error: "Authentication failed. No user identity returned." }
+    return { error: "Invalid email or password." }
   }
 
   // 🛡️ ROLE & PORTAL ISOLATION GUARD:
-  const { data: profile } = await supabase
+  const { data: profile } = await (adminClient as any)
     .from('profiles')
     .select('role, status, phone, phone_number')
-    .eq('id', data.user.id)
+    .eq('id', verifiedUser.id)
     .maybeSingle()
 
-  const role = (profile?.role || data.user.user_metadata?.role || '').toLowerCase().trim()
+  const role = (profile?.role || verifiedUser.user_metadata?.role || '').toLowerCase().trim()
   const status = (profile?.status || '').toLowerCase().trim()
 
   if (status === 'suspended' || status === 'banned' || status === 'inactive') {
-    await supabase.auth.signOut()
     recordLoginFailure(clientIp, normalizedEmail)
     await enforceConstantTime(startTime, 350)
     return { error: "Access denied. Your account has been suspended or deactivated." }
@@ -87,7 +82,6 @@ export async function login(formData: FormData) {
 
   // Strictly isolate portals: Fleet Operators cannot login as clients
   if ((PROHIBITED_OPERATOR_ROLES as readonly string[]).includes(role)) {
-    await supabase.auth.signOut()
     recordLoginFailure(clientIp, normalizedEmail)
     await enforceConstantTime(startTime, 350)
     return { 
@@ -97,11 +91,17 @@ export async function login(formData: FormData) {
 
   // Allow clients, customers, corporate/gov accounts, and administrative accounts
   if (role && !(ALLOWED_CLIENT_ROLES as readonly string[]).includes(role)) {
-    await supabase.auth.signOut()
     recordLoginFailure(clientIp, normalizedEmail)
     await enforceConstantTime(startTime, 350)
     return { error: "Access Denied: Unauthorized role for this portal." }
   }
+
+  // 4. Establish authenticated session
+  const supabase = await createClient()
+  await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: rawPassword,
+  })
 
   // Success: clear failed attempts
   recordLoginSuccess(clientIp, normalizedEmail)
@@ -230,18 +230,12 @@ export async function logout() {
 
 export async function verifyEmailOtp(email: string, otp: string) {
   const supabase = await createClient()
-  if (otp === '123456') {
-    return { success: true }
-  }
   const { data, error } = await supabase.auth.verifyOtp({
     email,
     token: otp,
     type: 'signup'
   })
   if (error) {
-    if (process.env.NODE_ENV !== 'production' || otp === '123456') {
-      return { success: true }
-    }
     return { error: error.message }
   }
   return { success: true }
@@ -292,8 +286,6 @@ export async function sendPhoneOtp() {
     console.error("SMS OTP DB Error:", dbError);
   }
   
-  // Send SMS
-  console.log(`🔑 [SMS VERIFICATION] Code for ${phone}: ${otp} (Universal test bypass: 123456)`);
   try {
     await client.messages.create({
       body: `Your TransHola verification code is: ${otp}`,
@@ -302,22 +294,13 @@ export async function sendPhoneOtp() {
     });
     return { success: true };
   } catch (err: any) {
-    console.warn("Twilio SMS Notice (bypassed for development/mock number):", err?.message || err);
+    console.warn("Twilio SMS Notice:", err?.message || err);
     return { success: true };
   }
 }
 
 export async function verifyPhoneOtp(phone: string, otp: string) {
   const supabase = await createClient();
-  
-  if (otp === '123456') {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from('profiles').update({ status: 'Active' }).eq('id', user.id);
-    }
-    return { success: true };
-  }
-
   const otpHash = generateOtpHash(phone, otp);
   
   // Verify OTP
@@ -331,13 +314,6 @@ export async function verifyPhoneOtp(phone: string, otp: string) {
     .maybeSingle();
     
   if (error || !data) {
-    if (process.env.NODE_ENV !== 'production') {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('profiles').update({ status: 'Active' }).eq('id', user.id);
-      }
-      return { success: true };
-    }
     return { error: "Invalid verification code" };
   }
   if (new Date(data.expires_at) < new Date()) return { error: "Verification code expired" };

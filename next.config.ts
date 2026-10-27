@@ -25,10 +25,6 @@ const nextConfig: NextConfig = {
 
     return [
       {
-        source: '/auth/v1/:path*',
-        destination: `${supabaseUrl}/auth/v1/:path*`,
-      },
-      {
         source: '/rest/v1/:path*',
         destination: `${supabaseUrl}/rest/v1/:path*`,
       },
