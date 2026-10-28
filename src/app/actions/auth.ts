@@ -48,9 +48,11 @@ export async function login(formData: FormData) {
     return { error: rateLimit.error }
   }
 
-  // 3. Cryptographic Password Verification via Postgres pgcrypto RPC
+  // 3. Cryptographic Password Verification via Postgres pgcrypto RPC with Auth fallback
   const adminClient = createAdminClient()
-  const { data: verifiedUser, error: verifyError } = await (adminClient as any).rpc(
+  let verifiedUser: any = null
+
+  const { data: rpcUser, error: verifyError } = await (adminClient as any).rpc(
     'verify_user_credentials',
     {
       p_email: normalizedEmail,
@@ -58,7 +60,24 @@ export async function login(formData: FormData) {
     }
   )
 
-  if (verifyError || !verifiedUser || !verifiedUser.id) {
+  if (rpcUser && rpcUser.id) {
+    verifiedUser = rpcUser
+  } else {
+    const { data: authData, error: authError } = await adminClient.auth.signInWithPassword({
+      email: normalizedEmail,
+      password: rawPassword
+    })
+    if (authData?.user?.id && !authError) {
+      verifiedUser = {
+        id: authData.user.id,
+        email: authData.user.email,
+        user_metadata: authData.user.user_metadata,
+        app_metadata: authData.user.app_metadata
+      }
+    }
+  }
+
+  if (!verifiedUser || !verifiedUser.id) {
     recordLoginFailure(clientIp, normalizedEmail)
     await enforceConstantTime(startTime, 350)
     return { error: "Invalid email or password." }
