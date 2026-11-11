@@ -134,6 +134,8 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   const [globalTaxes, setGlobalTaxes] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [capacityNotice, setCapacityNotice] = React.useState<string | null>(null);
+  const [isEstimatedUnservedArea, setIsEstimatedUnservedArea] = React.useState<boolean>(false);
+  const [unservedNoticeText, setUnservedNoticeText] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function fetchCalculations() {
@@ -163,20 +165,134 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           multiDayStore: bookingDetails?.multiDayStore
         };
 
+        const calcCtrl = new AbortController();
+        const calcTimeout = setTimeout(() => { try { calcCtrl.abort(); } catch {} }, 3000);
         const res = await fetch(`${BOOKING_API_URL}/calculate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${session?.access_token || 'BYPASS_AUTH'}`
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: calcCtrl.signal
         }).catch((fetchErr) => {
           console.warn("[QuotationPanel] Network error reaching calculate endpoint:", fetchErr);
           return null;
         });
+        clearTimeout(calcTimeout);
+
+        const buildLocalFallbackOptions = () => {
+          const paxCount = Math.max(1, Number(passengers) || 1);
+          const dist = Math.max(10, Number(routeDistanceKm) || 35);
+          const numDays = Math.max(1, (payload as any).multiDayStore?.length || (payload as any).days || 1);
+          const cCode = String(payload.countryCode || bookingDetails?.pickup?.countryCode || 'US').toUpperCase();
+          const activeServedSet = new Set(['AE', 'US', 'ES', 'MA']);
+          const localIsServed = activeServedSet.has(cCode);
+
+          const currencyMap: Record<string, { code: string; sym: string; mult: number }> = {
+            US: { code: 'USD', sym: '$', mult: 1.0 },
+            AE: { code: 'AED', sym: 'AED ', mult: 1.54 },
+            SA: { code: 'SAR', sym: 'SAR ', mult: 1.58 },
+            QA: { code: 'QAR', sym: 'QAR ', mult: 1.53 },
+            ES: { code: 'EUR', sym: '€', mult: 0.69 },
+            FR: { code: 'EUR', sym: '€', mult: 0.75 },
+            DE: { code: 'EUR', sym: '€', mult: 0.75 },
+            IT: { code: 'EUR', sym: '€', mult: 0.69 },
+            GB: { code: 'GBP', sym: '£', mult: 0.70 },
+            UK: { code: 'GBP', sym: '£', mult: 0.70 },
+            MA: { code: 'MAD', sym: 'MAD ', mult: 3.98 },
+            SG: { code: 'SGD', sym: 'S$', mult: 1.18 },
+            ID: { code: 'IDR', sym: 'Rp ', mult: 5370 },
+            CA: { code: 'CAD', sym: 'CA$', mult: 1.21 },
+            AU: { code: 'AUD', sym: 'A$', mult: 1.34 },
+            EG: { code: 'EGP', sym: 'EGP ', mult: 16.6 },
+            IN: { code: 'INR', sym: '₹', mult: 28.5 },
+            JP: { code: 'JPY', sym: '¥', mult: 114 },
+            BR: { code: 'BRL', sym: 'R$', mult: 2.30 },
+            MX: { code: 'MXN', sym: 'MX$', mult: 8.04 },
+          };
+          const currEntry = currencyMap[cCode] || { code: 'USD', sym: '$', mult: 0.80 };
+          const fallbackCurrency = currEntry.code;
+          const fallbackSymbol = currEntry.sym;
+          const rateFactor = currEntry.mult;
+
+          const catalogSpecs = [
+            { id: 'sedan', name: 'Executive Sedan', capacity: 3, baseCostIndex: Math.round(145 * rateFactor), iconName: 'sedan', cat: 'VIP Chauffeur' },
+            { id: 'suv', name: 'First-Class VIP SUV', capacity: 6, baseCostIndex: Math.round(195 * rateFactor), iconName: 'suv', cat: 'VIP Chauffeur' },
+            { id: 'van', name: '14-Pax VIP Sprinter', capacity: 14, baseCostIndex: Math.round(265 * rateFactor), iconName: 'van', cat: 'Executive Shuttle' },
+            { id: 'minibus', name: '24-Pax Executive Minibus', capacity: 24, baseCostIndex: Math.round(340 * rateFactor), iconName: 'minibus', cat: 'Executive Shuttle' },
+            { id: 'midicoach', name: '36-Pax Executive Mini Coach', capacity: 36, baseCostIndex: Math.round(430 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
+            { id: 'coach', name: '56-Pax Luxury Motorcoach', capacity: 56, baseCostIndex: Math.round(540 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
+            { id: 'double-decker', name: '81-Pax Panoramic Double Decker', capacity: 81, baseCostIndex: Math.round(690 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
+          ];
+
+          const uniformResults = OptimizationSolver.calculateUniformFleet(paxCount, catalogSpecs);
+          const mixedResult = paxCount > 14 ? OptimizationSolver.calculateEconomicalMixedFleet(paxCount, catalogSpecs) : null;
+          const distFactor = Math.max(1, dist / 35);
+          const tripFactor = tripType === 'round-trip' || tripType === 'round_trip' ? 1.45 : 1.0;
+
+          const fallbackList: any[] = uniformResults.slice(0, 3).map((u, idx) => {
+            const unit = u.fleet[0];
+            const spec = catalogSpecs.find(s => s.id === unit.vehicle.id) || catalogSpecs[0];
+            const calcPrice = Math.round(u.totalCostIndex * distFactor * tripFactor * numDays);
+            return {
+              id: `local_${spec.id}_${unit.quantity}`,
+              label: unit.quantity > 1 ? `${unit.quantity}× ${spec.name}` : spec.name,
+              vehicles: [{ count: unit.quantity, type: spec.name, seats: spec.capacity, iconName: spec.iconName }],
+              totalSeats: u.totalCapacity,
+              price: calcPrice,
+              eta: localIsServed ? 'Guaranteed Availability' : 'Estimated Rate · Unserved Area',
+              isRecommended: idx === 0,
+              tag: !localIsServed ? 'Estimated Rate' : (idx === 0 ? 'Best Price · Optimal Fit' : idx === 1 ? 'Extra Comfort' : 'High Capacity'),
+              serviceCategory: spec.cat,
+              currency: fallbackCurrency,
+              currencySymbol: fallbackSymbol,
+              daysCount: numDays,
+              isEstimatedRate: !localIsServed,
+              isServedArea: localIsServed,
+            };
+          });
+
+          if (mixedResult && mixedResult.fleet.length > 1) {
+            const calcPrice = Math.round(mixedResult.totalCostIndex * 0.92 * distFactor * tripFactor * numDays);
+            fallbackList.push({
+              id: `local_mixed_${paxCount}`,
+              label: mixedResult.fleet.map(f => `${f.quantity}× ${f.vehicle.name}`).join(' + '),
+              vehicles: mixedResult.fleet.map(f => ({
+                count: f.quantity,
+                type: f.vehicle.name,
+                seats: f.vehicle.capacity,
+                iconName: f.vehicle.capacity >= 36 ? 'coach' : f.vehicle.capacity >= 20 ? 'minibus' : 'van'
+              })),
+              totalSeats: mixedResult.totalCapacity,
+              price: calcPrice,
+              eta: localIsServed ? 'Synchronized Fleet' : 'Estimated Rate · Unserved Area',
+              isRecommended: false,
+              tag: !localIsServed ? 'Estimated Split Fleet' : 'Optimal Split Fleet',
+              serviceCategory: 'Mixed Services',
+              currency: fallbackCurrency,
+              currencySymbol: fallbackSymbol,
+              daysCount: numDays,
+              isEstimatedRate: !localIsServed,
+              isServedArea: localIsServed,
+            });
+          }
+
+          return { fallbackList, fallbackCurrency, fallbackSymbol, localIsServed };
+        };
 
         if (!res || !res.ok) {
-          console.warn(`[QuotationPanel] Calculate returned non-ok status: ${res?.status}`);
+          console.warn(`[QuotationPanel] Calculate returned non-ok status (${res?.status}), using deterministic OptimizationSolver fallback`);
+          const { fallbackList, fallbackCurrency, fallbackSymbol, localIsServed } = buildLocalFallbackOptions();
+          setOptions(fallbackList);
+          setCurrency(fallbackCurrency);
+          setCurrencySymbol(fallbackSymbol);
+          setIsEstimatedUnservedArea(!localIsServed);
+          setUnservedNoticeText(!localIsServed ? "This is an estimated rate — we don't serve this area yet." : null);
+          if (fallbackList.length > 0) {
+            setSelected(fallbackList[0]);
+            if (onSelectionChange) onSelectionChange(fallbackList[0]);
+          }
           return;
         }
 
@@ -184,13 +300,27 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         const retCurrency = data.data?.currency || 'EUR';
         const retSymbol = data.data?.currencySymbol || (retCurrency === 'EUR' ? '€' : '$');
         const numDays = Math.max(1, (payload as any).multiDayStore?.length || (payload as any).days || 1);
+        const unservedFromApi = data.data?.isServedArea === false || data.data?.isEstimatedRate === true;
 
-        const returnedOptions = (data.data?.options || []).map((opt: any) => ({
+        let returnedOptions = (data.data?.options || []).map((opt: any) => ({
           ...opt,
+          eta: unservedFromApi ? 'Estimated Rate · Unserved Area' : opt.eta,
           currency: retCurrency,
           currencySymbol: retSymbol,
-          daysCount: numDays
+          daysCount: numDays,
+          isEstimatedRate: unservedFromApi,
+          isServedArea: !unservedFromApi
         }));
+
+        if (returnedOptions.length === 0) {
+          const { fallbackList, localIsServed } = buildLocalFallbackOptions();
+          returnedOptions = fallbackList;
+          setIsEstimatedUnservedArea(unservedFromApi || !localIsServed);
+          setUnservedNoticeText((unservedFromApi || !localIsServed) ? (data.data?.serviceNotice || "This is an estimated rate — we don't serve this area yet.") : null);
+        } else {
+          setIsEstimatedUnservedArea(unservedFromApi);
+          setUnservedNoticeText(unservedFromApi ? (data.data?.serviceNotice || "This is an estimated rate — we don't serve this area yet.") : null);
+        }
 
         setOptions(returnedOptions);
         setCurrency(retCurrency);
@@ -604,6 +734,18 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           </>
         ) : (
           <>
+            {isEstimatedUnservedArea && (
+              <div style={{ padding: '13px 15px', borderRadius: '14px', background: '#fffbeb', border: '1.5px solid #fde68a', marginBottom: '16px', display: 'flex', gap: '11px', alignItems: 'flex-start' }}>
+                <AlertTriangle style={{ width: '18px', height: '18px', color: '#d97706', flexShrink: 0, marginTop: '1px' }} />
+                <div style={{ fontSize: '12px', color: '#92400e', lineHeight: 1.55 }}>
+                  <strong style={{ display: 'block', marginBottom: '3px', fontWeight: 800, fontSize: '12.5px', color: '#78350f' }}>
+                    Estimated Rate — We Don&apos;t Serve This Area Yet
+                  </strong>
+                  {unservedNoticeText || "This is an estimated rate and we don't serve this area yet."} Rates shown below are calibrated regional estimates for planning reference only.
+                </div>
+              </div>
+            )}
+
             {capacityNotice && (
               <div style={{ padding: '12px 14px', borderRadius: '12px', background: '#fffbeb', border: '1.5px solid #fef3c7', marginBottom: '16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                 <AlertTriangle style={{ width: '16px', height: '16px', color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
@@ -624,10 +766,12 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
             {shown.length > 0 && (
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ShieldCheck style={{ width: '14px', height: '14px', color: '#2563eb' }} />
+                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: isEstimatedUnservedArea ? '#fef3c7' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck style={{ width: '14px', height: '14px', color: isEstimatedUnservedArea ? '#d97706' : '#2563eb' }} />
                   </div>
-                  <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Recommended Fleet</h3>
+                  <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+                    {isEstimatedUnservedArea ? 'Estimated Fleet Rates' : 'Recommended Fleet'}
+                  </h3>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {shown.map(opt => renderOption(opt))}
@@ -688,24 +832,34 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e' }}>Quote saved — expires <span style={{ color: '#dc2626' }}>{countdown}</span></span>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '9px 13px', borderRadius: '10px', background: '#f8fafc', border: '1px dashed #e2e8f0' }}>
-              <Info style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0, marginTop: '1px' }} />
-              {canSaveAsQuote ? (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', padding: '9px 13px', borderRadius: '10px', background: isEstimatedUnservedArea ? '#fffbeb' : '#f8fafc', border: isEstimatedUnservedArea ? '1px solid #fde68a' : '1px dashed #e2e8f0' }}>
+              <Info style={{ width: '12px', height: '12px', color: isEstimatedUnservedArea ? '#d97706' : '#64748b', flexShrink: 0, marginTop: '1px' }} />
+              {isEstimatedUnservedArea ? (
+                <p style={{ fontSize: '11px', color: '#92400e', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+                  This is an estimated rate and we don&apos;t serve this area yet. Live dispatch checkout is unavailable for this location.
+                </p>
+              ) : canSaveAsQuote ? (
                 <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Quote valid until {expiresAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>
               ) : (
                 <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>Corporate rate applied. Trip starts too soon to save quote. Book now.</p>
               )}
             </div>
-            <button onClick={() => {
-              if (!user) {
-                setPendingAction("book");
-                setShowAuthDialog(true);
-              } else {
-                setStep("payment");
-              }
-            }} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currencySymbol || currency} {selected.price}
-            </button>
+            {isEstimatedUnservedArea ? (
+              <button disabled style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#e2e8f0', color: '#475569', fontWeight: 800, fontSize: '13.5px', border: 'none', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                Estimated Rate: {currencySymbol || currency} {selected.price} · Area Not Served Yet
+              </button>
+            ) : (
+              <button onClick={() => {
+                if (!user) {
+                  setPendingAction("book");
+                  setShowAuthDialog(true);
+                } else {
+                  setStep("payment");
+                }
+              }} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currencySymbol || currency} {selected.price}
+              </button>
+            )}
             {canSaveAsQuote && (
               <button onClick={() => {
                 if (!user) {
