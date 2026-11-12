@@ -399,16 +399,42 @@ export function BookingPanel({
     }
   }, []);
 
-  // Restore Itinerary from Local Storage
+  // Restore Itinerary from Local Storage (Only for genuine user-built routes, never initial auto-detected state or explicit CTA params)
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("saved_itinerary")
       const urlParams = new URLSearchParams(window.location.search);
-      if (saved && !urlParams.get("quote")) {
+      const hasExplicitEntryParams = Boolean(
+        urlParams.get("quote") ||
+        urlParams.get("pickup") ||
+        urlParams.get("dropoff") ||
+        urlParams.get("mode") ||
+        urlParams.get("tripType") ||
+        urlParams.get("city") ||
+        urlParams.get("dest") ||
+        urlParams.get("destination")
+      );
+      if (saved) {
         try {
-          setSavedItinerary(JSON.parse(saved))
-          setShowRestoreDialog(true)
-        } catch (e) { }
+          const parsed = JSON.parse(saved);
+          const hasRealDestination =
+            (parsed?.dropoff && !parsed.dropoff.isAutoDetected) ||
+            (typeof parsed?.dropoffValue === "string" && parsed.dropoffValue.trim().length >= 3 && (!parsed?.pickup?.isAutoDetected || parsed.dropoffValue !== parsed.pickup.address)) ||
+            (Array.isArray(parsed?.stops) && parsed.stops.some((s: any) => String(s?.address || "").trim().length >= 3));
+          const ageMs = parsed?.savedAt ? Date.now() - Date.parse(parsed.savedAt) : Infinity;
+          const isValidDraft = parsed?.draftSchemaVersion === 2 && parsed?.isGenuineUserDraft === true && hasRealDestination && Number.isFinite(ageMs) && ageMs <= 12 * 3600 * 1000;
+
+          if (!isValidDraft || hasExplicitEntryParams) {
+            if (!urlParams.get("quote")) {
+              localStorage.removeItem("saved_itinerary");
+            }
+            return;
+          }
+          setSavedItinerary(parsed);
+          setShowRestoreDialog(true);
+        } catch (e) {
+          localStorage.removeItem("saved_itinerary");
+        }
       }
     }
   }, []);
@@ -670,6 +696,9 @@ export function BookingPanel({
     }
 
     const payload = {
+      draftSchemaVersion: 2,
+      isGenuineUserDraft: true,
+      savedAt: new Date().toISOString(),
       pickupValue,
       pickup: pickupLoc,
       dropoffValue,
@@ -703,10 +732,13 @@ export function BookingPanel({
       shuttleVehicleEndings
     };
 
-    // Avoid saving if the only populated data is an auto-detected browser location
-    const isOnlyAutoLocation = pickupLoc && (pickupLoc as any).isAutoDetected && pickupValue === pickupLoc.address && !dropoffLoc && !dropoffValue && !startDate && !startTime && stops.length === 0;
+    // Only persist when the user has genuinely entered a destination or intermediate stop (never auto-detected initial state)
+    const hasGenuineDropoff =
+      (Boolean(dropoffLoc) && !(dropoffLoc as any).isAutoDetected) ||
+      (Boolean(dropoffValue && dropoffValue.trim().length >= 3) && !(pickupLoc && (pickupLoc as any).isAutoDetected && dropoffValue === pickupLoc.address));
+    const hasGenuineStops = stops.some((s) => (s.address || '').trim().length >= 3);
 
-    if (!isOnlyAutoLocation && (pickupLoc || dropoffLoc || pickupValue || dropoffValue || startDate || startTime)) {
+    if (hasGenuineDropoff || hasGenuineStops) {
       localStorage.setItem("saved_itinerary", JSON.stringify(payload));
     }
   }, [pickupValue, dropoffValue, pickupLoc, dropoffLoc, returnValue, returnLoc, startDate, startTime, endDate, endTime, tripType, serviceMode, clientGeoContext, passengers, shuttleVehicles, stops, pickupWaitMin, dropoffWaitMin, multiDayStore, selectedAmenities, adaRequired, adaVehicleCount]);
@@ -992,7 +1024,7 @@ export function BookingPanel({
           if (onPickupChange) onPickupChange(loc)
         } catch {
           const address = `${lat.toFixed(5)}, ${lon.toFixed(5)}`
-          const loc = { address, coordinate: { lat, lon } }
+          const loc = { address, coordinate: { lat, lon }, isAutoDetected: !isManual }
           setPickupValue(address)
           setPickupLoc(loc)
           if (onPickupChange) onPickupChange(loc)
@@ -3749,6 +3781,9 @@ export function BookingPanel({
                     }
 
                     const payload = {
+                      draftSchemaVersion: 2,
+                      isGenuineUserDraft: true,
+                      savedAt: new Date().toISOString(),
                       pickupValue,
                       pickup: pickupLoc,
                       dropoffValue: finalDropoffValue,
