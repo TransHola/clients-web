@@ -216,25 +216,69 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           const fallbackSymbol = currEntry.sym;
           const rateFactor = currEntry.mult;
 
-          const catalogSpecs = [
-            { id: 'sedan', name: 'Executive Sedan', capacity: 3, baseCostIndex: Math.round(145 * rateFactor), iconName: 'sedan', cat: 'VIP Chauffeur' },
-            { id: 'suv', name: 'First-Class VIP SUV', capacity: 6, baseCostIndex: Math.round(195 * rateFactor), iconName: 'suv', cat: 'VIP Chauffeur' },
-            { id: 'van', name: '14-Pax VIP Sprinter', capacity: 14, baseCostIndex: Math.round(265 * rateFactor), iconName: 'van', cat: 'Executive Shuttle' },
-            { id: 'minibus', name: '24-Pax Executive Minibus', capacity: 24, baseCostIndex: Math.round(340 * rateFactor), iconName: 'minibus', cat: 'Executive Shuttle' },
-            { id: 'midicoach', name: '36-Pax Executive Mini Coach', capacity: 36, baseCostIndex: Math.round(430 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
-            { id: 'coach', name: '56-Pax Luxury Motorcoach', capacity: 56, baseCostIndex: Math.round(540 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
-            { id: 'double-decker', name: '81-Pax Panoramic Double Decker', capacity: 81, baseCostIndex: Math.round(690 * rateFactor), iconName: 'coach', cat: 'Charter Bus' },
-          ];
+          const durHrs = Math.max(1, Number(payload.durationHours) || (dist / 65));
+          const isRoundTrip = tripType === 'round-trip' || tripType === 'round_trip';
+          const isShuttle = tripType === 'shuttle';
+
+          // Country-specific configured vehicle catalog & operational rates aligned with Super Admin presets
+          const computeFallbackUnitQuote = (hourlyBase: number, tier4hRate: number, minHrs: number, deadheadPerUnit: number, dailyMultiRate: number, mealFee: number, lodgingFee: number, taxPct: number, unitIsMiles: boolean) => {
+            const dUnits = unitIsMiles ? dist * 0.621371 : dist;
+            const billableDist = isRoundTrip ? dUnits * 2 : dUnits;
+            const billableHrs = Math.max(minHrs, isRoundTrip ? durHrs * 2 : durHrs);
+            let charterBase = 0;
+            if (isRoundTrip && numDays >= 2 && dailyMultiRate > 0) {
+              const incDist = 200 * numDays;
+              const incHrs = 10 * numDays;
+              charterBase = (dailyMultiRate * numDays)
+                + Math.max(0, billableHrs - incHrs) * (dailyMultiRate / 10)
+                + Math.max(0, billableDist - incDist) * deadheadPerUnit;
+            } else {
+              const first4 = Math.min(4, billableHrs);
+              const rem = Math.max(0, billableHrs - 4);
+              charterBase = first4 * hourlyBase + rem * tier4hRate;
+            }
+            // Operational positioning + empty return deadhead on One Way (approx 1.05x route return + local depot dispatch)
+            const deadUnits = (!isRoundTrip && !isShuttle) ? (dUnits + (unitIsMiles ? 5 : 8)) : 0;
+            const deadCharge = deadUnits * deadheadPerUnit;
+            const meals = (billableDist >= 150 || billableHrs >= 8) ? mealFee * Math.max(1, numDays > 1 ? numDays * 2 : 1) : 0;
+            const lodging = numDays >= 2 ? lodgingFee * (numDays - 1) : 0;
+            const sub = charterBase + deadCharge + meals + lodging;
+            return Math.round(sub * (1 + taxPct / 100));
+          };
+
+          let catalogSpecs: { id: string; name: string; capacity: number; baseCostIndex: number; iconName: string; cat: string }[] = [];
+          if (cCode === 'AE') {
+            // UAE Super Admin Preset: Executive SUV (6), Mini Van (7), Van (14), Minibus (24), Mini Coach (33), Charter Bus (56) — NO 81-Pax Double Decker or 36-Pax Mini Coach
+            catalogSpecs = [
+              { id: 'suv', name: 'Executive SUV', capacity: 6, baseCostIndex: computeFallbackUnitQuote(170, 162, 3, 2.0, 1360, 40, 250, 5, false), iconName: 'suv', cat: 'VIP Chauffeur' },
+              { id: 'mpv', name: 'Mini Van', capacity: 7, baseCostIndex: computeFallbackUnitQuote(150, 143, 3, 1.8, 1200, 40, 250, 5, false), iconName: 'mpv', cat: 'VIP Chauffeur' },
+              { id: 'van', name: 'Van', capacity: 14, baseCostIndex: computeFallbackUnitQuote(150, 144, 4, 1.8, 1300, 40, 250, 5, false), iconName: 'van', cat: 'Bus for Hire' },
+              { id: 'minibus', name: 'Minibus', capacity: 24, baseCostIndex: computeFallbackUnitQuote(175, 168, 4, 2.2, 1450, 40, 250, 5, false), iconName: 'minibus', cat: 'Bus for Hire' },
+              { id: 'executive-minibus-33', name: 'Mini Coach', capacity: 33, baseCostIndex: computeFallbackUnitQuote(200, 192, 5, 2.5, 1600, 40, 250, 5, false), iconName: 'minibus', cat: 'Bus for Hire' },
+              { id: 'coach', name: 'Charter Bus', capacity: 56, baseCostIndex: computeFallbackUnitQuote(240, 230, 5, 3.0, 1750, 40, 250, 5, false), iconName: 'coach', cat: 'Bus for Hire' },
+            ];
+          } else {
+            // US / ES / MA / International Preset: SUV (6), Van (14), Minibus (24), Executive Shuttle (33), Mini Coach (36), Motorcoach (56), Double Decker (81)
+            const uMiles = cCode === 'US';
+            const taxPct = cCode === 'ES' ? 10 : cCode === 'MA' ? 14 : 0;
+            catalogSpecs = [
+              { id: 'suv', name: 'First-Class VIP SUV', capacity: 6, baseCostIndex: computeFallbackUnitQuote(Math.round(95 * rateFactor), Math.round(91 * rateFactor), 3, 1.5 * rateFactor, Math.round(800 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'suv', cat: 'VIP Chauffeur' },
+              { id: 'van', name: '14-Pax VIP Sprinter', capacity: 14, baseCostIndex: computeFallbackUnitQuote(Math.round(115 * rateFactor), Math.round(110 * rateFactor), 4, 1.4 * rateFactor, Math.round(1050 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'van', cat: 'Executive Shuttle' },
+              { id: 'minibus', name: '24-Pax Executive Minibus', capacity: 24, baseCostIndex: computeFallbackUnitQuote(Math.round(125 * rateFactor), Math.round(120 * rateFactor), 4, 1.5 * rateFactor, Math.round(1150 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'minibus', cat: 'Executive Shuttle' },
+              { id: 'executive-minibus-33', name: '33-Pax Executive Shuttle', capacity: 33, baseCostIndex: computeFallbackUnitQuote(Math.round(140 * rateFactor), Math.round(134 * rateFactor), 5, 1.6 * rateFactor, Math.round(1300 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'minibus', cat: 'Charter Bus' },
+              { id: 'midicoach', name: '36-Pax Executive Mini Coach', capacity: 36, baseCostIndex: computeFallbackUnitQuote(Math.round(160 * rateFactor), Math.round(154 * rateFactor), 5, 1.8 * rateFactor, Math.round(1450 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'coach', cat: 'Charter Bus' },
+              { id: 'coach', name: '56-Pax Luxury Motorcoach', capacity: 56, baseCostIndex: computeFallbackUnitQuote(Math.round(165 * rateFactor), Math.round(158 * rateFactor), 5, 2.0 * rateFactor, Math.round(1500 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'coach', cat: 'Charter Bus' },
+              { id: 'double-decker', name: '81-Pax Panoramic Double Decker', capacity: 81, baseCostIndex: computeFallbackUnitQuote(Math.round(245 * rateFactor), Math.round(235 * rateFactor), 5, 2.5 * rateFactor, Math.round(2100 * rateFactor), Math.round(25 * rateFactor), Math.round(145 * rateFactor), taxPct, uMiles), iconName: 'coach', cat: 'Charter Bus' },
+            ];
+          }
 
           const uniformResults = OptimizationSolver.calculateUniformFleet(paxCount, catalogSpecs);
           const mixedResult = paxCount > 14 ? OptimizationSolver.calculateEconomicalMixedFleet(paxCount, catalogSpecs) : null;
-          const distFactor = Math.max(1, dist / 35);
-          const tripFactor = tripType === 'round-trip' || tripType === 'round_trip' ? 1.45 : 1.0;
 
           const fallbackList: any[] = uniformResults.slice(0, 3).map((u, idx) => {
             const unit = u.fleet[0];
             const spec = catalogSpecs.find(s => s.id === unit.vehicle.id) || catalogSpecs[0];
-            const calcPrice = Math.round(u.totalCostIndex * distFactor * tripFactor * numDays);
+            const calcPrice = Math.round(u.totalCostIndex);
             return {
               id: `local_${spec.id}_${unit.quantity}`,
               label: unit.quantity > 1 ? `${unit.quantity}× ${spec.name}` : spec.name,
@@ -254,7 +298,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           });
 
           if (mixedResult && mixedResult.fleet.length > 1) {
-            const calcPrice = Math.round(mixedResult.totalCostIndex * 0.92 * distFactor * tripFactor * numDays);
+            const calcPrice = Math.round(mixedResult.totalCostIndex);
             fallbackList.push({
               id: `local_mixed_${paxCount}`,
               label: mixedResult.fleet.map(f => `${f.quantity}× ${f.vehicle.name}`).join(' + '),
