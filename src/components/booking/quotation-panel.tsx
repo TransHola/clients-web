@@ -21,6 +21,155 @@ import { PhoneInput } from "@transhola/ui"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_mock');
 const BOOKING_API_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://localhost:8000';
+const SUPERADMIN_EMAIL_BASE_URL =
+  process.env.NEXT_PUBLIC_SUPERADMIN_URL ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:3000'
+    : 'https://admin.transhola.com');
+
+function resolveAddressText(loc: any, fallbackLabel: string): string {
+  if (!loc) return fallbackLabel;
+  if (typeof loc === 'string') return loc;
+  return String(loc.address || loc.name || loc.label || loc.formatted_address || fallbackLabel);
+}
+
+function dispatchAirlineQuotationEmailClient(params: {
+  email?: string;
+  clientName?: string;
+  quoteRef?: string;
+  option: any;
+  bookingDetails: any;
+  currency: string;
+  passengers: number;
+  tripType: string;
+  distanceKm?: number;
+}) {
+  const targetEmail = String(params.email || '').trim().toLowerCase();
+  if (!targetEmail || !targetEmail.includes('@')) return;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 2900);
+  const countryCode = String(
+    params.bookingDetails?.countryCode ||
+    params.bookingDetails?.pickup?.countryCode ||
+    'GLOBAL'
+  ).toUpperCase();
+
+  fetch(`${SUPERADMIN_EMAIL_BASE_URL}/api/quote-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctrl.signal,
+    body: JSON.stringify({
+      email: targetEmail,
+      name: params.clientName || targetEmail.split('@')[0],
+      customerName: params.clientName || targetEmail.split('@')[0],
+      quoteRef: params.quoteRef || `TH-Q-${Math.floor(10000 + Math.random() * 90000)}`,
+      countryCode,
+      city: params.bookingDetails?.city || '',
+      tripType: params.tripType || 'One Way',
+      passengers: params.passengers || 1,
+      dateStr: params.bookingDetails?.startDate || 'Flexible Date',
+      rawDate: params.bookingDetails?.startDate || '',
+      startTime: params.bookingDetails?.startTime || '09:00 AM',
+      pickup: resolveAddressText(params.bookingDetails?.pickup, 'Origin Hub'),
+      dropoff: resolveAddressText(params.bookingDetails?.dropoff, 'Destination Hub'),
+      distanceText: params.distanceKm ? `${params.distanceKm} km` : String(params.bookingDetails?.distance || '—'),
+      durationText: String(params.bookingDetails?.duration || params.option?.eta || '—'),
+      currency: params.currency || 'EUR',
+      selectedFleetId: params.option?.id,
+      fleetOptions: params.option ? [{
+        id: params.option.id,
+        title: params.option.label || 'Selected Charter Vehicle',
+        seats: params.option.totalSeats || params.passengers || 14,
+        bags: params.option.totalLuggage || params.passengers || 14,
+        price: Number(params.option.price || 0),
+        badge: 'Selected Configuration'
+      }] : []
+    })
+  })
+    .catch((err) => console.warn('[Airline Quote Email] Non-blocking dispatch warning:', err))
+    .finally(() => clearTimeout(timer));
+}
+
+function dispatchAirlineBookingEmailClient(params: {
+  email?: string;
+  passengerName?: string;
+  passengerPhone?: string;
+  bookingRef?: string;
+  option: any;
+  bookingDetails: any;
+  currency: string;
+  paymentMethod?: string;
+  isThirdParty?: boolean;
+  thirdPartyInfo?: any;
+}) {
+  const recipients = new Set<string>();
+  if (params.email && String(params.email).includes('@')) {
+    recipients.add(String(params.email).trim().toLowerCase());
+  }
+  if (params.isThirdParty && params.thirdPartyInfo?.email && String(params.thirdPartyInfo.email).includes('@')) {
+    recipients.add(String(params.thirdPartyInfo.email).trim().toLowerCase());
+  }
+  if (recipients.size === 0) return;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 2900);
+  const countryCode = String(
+    params.bookingDetails?.countryCode ||
+    params.bookingDetails?.pickup?.countryCode ||
+    'GLOBAL'
+  ).toUpperCase();
+
+  const refClean = params.bookingRef
+    ? (params.bookingRef.startsWith('TH-') || params.bookingRef.startsWith('TRN-')
+      ? params.bookingRef
+      : `TRN-${String(params.bookingRef).substring(0, 8).toUpperCase()}`)
+    : `TH-BK-${Math.floor(10000 + Math.random() * 90000)}`;
+
+  fetch(`${SUPERADMIN_EMAIL_BASE_URL}/api/booking-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctrl.signal,
+    body: JSON.stringify({
+      emails: Array.from(recipients),
+      bookingRef: refClean,
+      quoteRef: params.bookingDetails?.quotation_ref || '',
+      countryCode,
+      city: params.bookingDetails?.city || '',
+      tripType: params.bookingDetails?.tripType || 'Charter Service',
+      passengers: Number(params.bookingDetails?.passengers || params.option?.totalSeats || 1),
+      dateStr: params.bookingDetails?.startDate || 'Scheduled Date',
+      rawDate: params.bookingDetails?.startDate || '',
+      startTime: params.bookingDetails?.startTime || '09:00 AM',
+      pickup: resolveAddressText(params.bookingDetails?.pickup, 'Origin Hub'),
+      dropoff: resolveAddressText(params.bookingDetails?.dropoff, 'Destination Hub'),
+      distanceText: params.bookingDetails?.routeDistanceKm
+        ? `${params.bookingDetails.routeDistanceKm} km`
+        : String(params.bookingDetails?.distance || '—'),
+      durationText: String(params.bookingDetails?.duration || params.option?.eta || '—'),
+      currency: params.currency || 'EUR',
+      fleetTitle: params.option?.label || 'Executive Charter Fleet',
+      totalSeats: Number(params.option?.totalSeats || params.bookingDetails?.passengers || 14),
+      totalLuggage: Number(params.option?.totalLuggage || params.bookingDetails?.passengers || 14),
+      totalPrice: Number(params.option?.price || 0),
+      paymentMethod: params.paymentMethod || 'Card Checkout (Stripe)',
+      paymentStatus: 'PAID',
+      customerName: params.passengerName || 'Lead Passenger',
+      passengerName: params.isThirdParty && params.thirdPartyInfo
+        ? `${params.thirdPartyInfo.firstName || ''} ${params.thirdPartyInfo.lastName || ''}`.trim() || params.passengerName
+        : (params.passengerName || 'Lead Passenger'),
+      passengerEmail: params.isThirdParty && params.thirdPartyInfo?.email
+        ? params.thirdPartyInfo.email
+        : Array.from(recipients)[0],
+      passengerPhone: params.passengerPhone || '',
+      isThirdParty: Boolean(params.isThirdParty),
+      billingEntity: params.thirdPartyInfo?.company || undefined,
+      clientPortalUrl: typeof window !== 'undefined' ? `${window.location.origin}/bookings` : 'https://client.transhola.com/bookings'
+    })
+  })
+    .catch((err) => console.warn('[Airline Booking E-Ticket] Non-blocking dispatch warning:', err))
+    .finally(() => clearTimeout(timer));
+}
 
 // ─── Vehicle SVG Icons (Uber-style silhouettes) ────────────────────────────────
 function SedanIcon({ color = "#94a3b8", size = 32 }: { color?: string; size?: number }) {
@@ -509,6 +658,18 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           console.warn("Could not cache quote ref:", storageErr);
         }
       }
+
+      dispatchAirlineQuotationEmailClient({
+        email: authUser?.email || (isThirdParty ? thirdPartyInfo?.email : undefined),
+        clientName: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0],
+        quoteRef,
+        option: selected,
+        bookingDetails,
+        currency,
+        passengers: Number(bookingDetails?.passengers || passengers || 1),
+        tripType: bookingDetails?.tripType || tripType,
+        distanceKm: routeDistanceKm || bookingDetails?.distance,
+      });
 
       localStorage.removeItem("saved_itinerary");
       setSavedAsQuote(true);
@@ -1113,6 +1274,18 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
         if (!res.ok) throw new Error("Checkout Gateway validation failed");
 
         const responseData = await res.json();
+        dispatchAirlineBookingEmailClient({
+          email: session?.user?.email,
+          passengerName: session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0],
+          passengerPhone: session?.user?.phone || bookingDetails?.thirdPartyInfo?.phone,
+          bookingRef: responseData?.data?.booking_ref || responseData?.data?.ref || responseData?.data?.id,
+          option,
+          bookingDetails,
+          currency,
+          paymentMethod: 'Card Checkout (Instant Authorization)',
+          isThirdParty: Boolean(isThirdParty || bookingDetails?.isThirdParty),
+          thirdPartyInfo: thirdPartyInfo || bookingDetails?.thirdPartyInfo,
+        });
         localStorage.removeItem("saved_itinerary");
         setPayState("success");
         setTimeout(() => onConfirm(responseData?.data?.id), 1200);
@@ -1553,6 +1726,18 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
       if (!res.ok) throw new Error("Checkout Gateway validation failed");
 
       const responseData = await res.json();
+      dispatchAirlineBookingEmailClient({
+        email: session?.user?.email,
+        passengerName: session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0],
+        passengerPhone: session?.user?.phone || thirdPartyInfo?.phone || bookingDetails?.thirdPartyInfo?.phone,
+        bookingRef: responseData?.data?.booking_ref || responseData?.data?.ref || responseData?.data?.id,
+        option,
+        bookingDetails,
+        currency,
+        paymentMethod: 'Card Checkout (Stripe Verified)',
+        isThirdParty: Boolean(isThirdParty || bookingDetails?.isThirdParty),
+        thirdPartyInfo: thirdPartyInfo || bookingDetails?.thirdPartyInfo,
+      });
       localStorage.removeItem("saved_itinerary");
       setPayState("success");
       setTimeout(() => onConfirm(responseData?.data?.id), 200);
