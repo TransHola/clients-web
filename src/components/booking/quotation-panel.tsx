@@ -37,6 +37,8 @@ function dispatchAirlineQuotationEmailClient(params: {
   email?: string;
   clientName?: string;
   quoteRef?: string;
+  isAccountLoggedIn?: boolean;
+  accountUserId?: string;
   option: any;
   bookingDetails: any;
   currency: string;
@@ -46,6 +48,13 @@ function dispatchAirlineQuotationEmailClient(params: {
 }) {
   const targetEmail = String(params.email || '').trim().toLowerCase();
   if (!targetEmail || !targetEmail.includes('@')) return;
+
+  const isAuthAccount = params.isAccountLoggedIn !== false;
+  const clientAction: 'pricing' | 'quotation' = isAuthAccount ? 'quotation' : 'pricing';
+  const defaultPrefix = isAuthAccount ? 'TH-Q-' : 'TH-P-';
+  const resolvedRef = params.quoteRef
+    ? params.quoteRef.replace(/^TH-(?:P|Q)-/i, defaultPrefix)
+    : `${defaultPrefix}${Math.floor(10000 + Math.random() * 90000)}`;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 2900);
@@ -63,7 +72,10 @@ function dispatchAirlineQuotationEmailClient(params: {
       email: targetEmail,
       name: params.clientName || targetEmail.split('@')[0],
       customerName: params.clientName || targetEmail.split('@')[0],
-      quoteRef: params.quoteRef || `TH-Q-${Math.floor(10000 + Math.random() * 90000)}`,
+      quoteRef: resolvedRef,
+      clientAction,
+      isAccountLoggedIn: isAuthAccount,
+      accountUserId: params.accountUserId,
       countryCode,
       city: params.bookingDetails?.city || '',
       tripType: params.tripType || 'One Way',
@@ -80,9 +92,16 @@ function dispatchAirlineQuotationEmailClient(params: {
       fleetOptions: params.option ? [{
         id: params.option.id,
         title: params.option.label || 'Selected Charter Vehicle',
+        totalSeats: params.option.totalSeats || params.passengers || 14,
+        totalLuggage: params.option.totalLuggage || params.passengers || 14,
         seats: params.option.totalSeats || params.passengers || 14,
         bags: params.option.totalLuggage || params.passengers || 14,
         price: Number(params.option.price || 0),
+        baseCharterFare: params.option.baseCharterFare,
+        deadheadCost: params.option.deadheadCost,
+        allowancesCost: params.option.allowancesCost,
+        subtotal: params.option.subtotal,
+        taxAmount: params.option.taxAmount,
         badge: 'Selected Configuration'
       }] : []
     })
@@ -96,6 +115,7 @@ function dispatchAirlineBookingEmailClient(params: {
   passengerName?: string;
   passengerPhone?: string;
   bookingRef?: string;
+  accountUserId?: string;
   option: any;
   bookingDetails: any;
   currency: string;
@@ -134,6 +154,9 @@ function dispatchAirlineBookingEmailClient(params: {
       emails: Array.from(recipients),
       bookingRef: refClean,
       quoteRef: params.bookingDetails?.quotation_ref || '',
+      clientAction: 'booking',
+      isAccountLoggedIn: true,
+      accountUserId: params.accountUserId,
       countryCode,
       city: params.bookingDetails?.city || '',
       tripType: params.bookingDetails?.tripType || 'Charter Service',
@@ -152,6 +175,11 @@ function dispatchAirlineBookingEmailClient(params: {
       totalSeats: Number(params.option?.totalSeats || params.bookingDetails?.passengers || 14),
       totalLuggage: Number(params.option?.totalLuggage || params.bookingDetails?.passengers || 14),
       totalPrice: Number(params.option?.price || 0),
+      baseCharterFare: params.option?.baseCharterFare,
+      deadheadCost: params.option?.deadheadCost,
+      allowancesCost: params.option?.allowancesCost,
+      subtotal: params.option?.subtotal,
+      taxAmount: params.option?.taxAmount,
       paymentMethod: params.paymentMethod || 'Card Checkout (Stripe)',
       paymentStatus: 'PAID',
       customerName: params.passengerName || 'Lead Passenger',
@@ -663,6 +691,8 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         email: authUser?.email || (isThirdParty ? thirdPartyInfo?.email : undefined),
         clientName: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0],
         quoteRef,
+        isAccountLoggedIn: Boolean(authUser?.id && (authUser as any)?.provider !== 'quick' && !(authUser as any)?.isGuestQuickEmail),
+        accountUserId: authUser?.id,
         option: selected,
         bookingDetails,
         currency,
