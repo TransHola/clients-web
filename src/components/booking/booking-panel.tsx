@@ -2570,7 +2570,7 @@ export function BookingPanel({
                           value={pickupValue}
                           showLocateMe
                           onLocateMe={() => detectLocation(true)}
-                          bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
+                          bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon, countryCode: clientGeoContext.countryCode, city: clientGeoContext.city }}
                           onSelect={(loc) => {
                             setPickupValue(loc.address)
                             setPickupLoc(loc)
@@ -2694,7 +2694,7 @@ export function BookingPanel({
                                 <LocationSearchInput
                                   placeholder={`Stop ${idx + 1}`}
                                   value={stop.address}
-                                  bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
+                                  bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon, countryCode: clientGeoContext.countryCode, city: clientGeoContext.city }}
                                   onSelect={(loc) => { updateStop(stop.id, { address: loc.address, loc }); saveRecentLocation(loc); }}
                                 />
                               </div>
@@ -2808,7 +2808,7 @@ export function BookingPanel({
                         disabled={!pickupLoc}
                         placeholder="Final Destination"
                         value={dropoffValue}
-                        bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon }}
+                        bias={{ lat: clientGeoContext.lat, lon: clientGeoContext.lon, countryCode: clientGeoContext.countryCode, city: clientGeoContext.city }}
                         onSelect={(loc) => {
                           setDropoffValue(loc.address);
                           setDropoffLoc(loc);
