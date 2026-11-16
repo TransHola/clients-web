@@ -1,5 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolveVerifiedUserFromCookiesOrHeader } from '@/lib/auth/clientSession'
 
 // Public routes accessible without authentication
 const PUBLIC_PATHS = [
@@ -16,75 +16,29 @@ const PUBLIC_PATHS = [
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Allow static Next.js assets, public images, icons, API endpoints, and rewrites
+  // Allow static Next.js assets, public images, icons, GoTrue endpoints, API endpoints, and PostgREST rewrites
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/images') ||
     pathname.startsWith('/brand') ||
     pathname.startsWith('/static') ||
     pathname.startsWith('/api/') ||
+    pathname.startsWith('/auth/v1') ||
     pathname.startsWith('/rest/v1') ||
     pathname.includes('.')
   ) {
     return NextResponse.next()
   }
 
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
-
-  const isProd = process.env.NODE_ENV === 'production' || !!process.env.KUBERNETES_SERVICE_HOST
-  let supabaseUrl = 
-    process.env.SUPABASE_INTERNAL_URL || 
-    process.env.SUPABASE_URL || 
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 
-    'http://127.0.0.1:54321'
-
-  if (isProd && (supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('localhost'))) {
-    supabaseUrl = 'http://supabase-kong:8000'
-  }
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0',
-    {
-      cookieOptions: {
-        name: 'sb-client-session',
-        path: '/',
-        sameSite: 'lax',
-      },
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
+  const resolved = await resolveVerifiedUserFromCookiesOrHeader(
+    request.cookies.getAll(),
+    request.headers.get('authorization')
   )
+  const user = resolved?.user || null
 
-  let user = null
-  try {
-    const { data } = await supabase.auth.getUser()
-    user = data?.user
-  } catch {
-    const allCookies = request.cookies.getAll()
-    const hasAuthCookie = allCookies.some(c => c.name.startsWith('sb-') && c.value.length > 20)
-    if (hasAuthCookie) {
-      user = { id: 'session-authenticated' } as any
-    }
-  }
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
 
-  const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
-
-  // If unauthenticated and visiting a non-public route (including root /), redirect directly to /login
+  // If unauthenticated and visiting a non-public route (including root /), redirect cleanly to /login
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -96,21 +50,26 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // If authenticated and visiting login/register, redirect to dashboard /
+  // If genuinely authenticated with a verified customer session and visiting /login or /register, go to /
   if (user && (pathname === '/login' || pathname === '/register')) {
+    const redirectParam = request.nextUrl.searchParams.get('redirect')
     const url = request.nextUrl.clone()
+    if (redirectParam && redirectParam.startsWith('/')) {
+      const targetUrl = new URL(redirectParam, request.url)
+      return NextResponse.redirect(targetUrl)
+    }
     url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
-  // Attach strict security headers
-  supabaseResponse.headers.set('X-Frame-Options', 'DENY')
-  supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
-  supabaseResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-  supabaseResponse.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)')
-  supabaseResponse.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
+  const response = NextResponse.next({ request })
+  response.headers.set('X-Frame-Options', 'DENY')
+  response.headers.set('X-Content-Type-Options', 'nosniff')
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)')
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
 
-  return supabaseResponse
+  return response
 }
 
 export const config = {

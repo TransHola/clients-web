@@ -11,11 +11,21 @@ export function createClient() {
 
   if (typeof document !== 'undefined') {
     try {
-      const rawCookies = document.cookie.split(';');
+      const rawCookies = document.cookie.split(';')
       for (const c of rawCookies) {
-        const cookieName = c.trim().split('=')[0];
-        if (cookieName.startsWith('sb-localhost') || cookieName === 'sb-127-auth-token') {
-          document.cookie = `${cookieName}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT;`;
+        const trimmed = c.trim()
+        const eqIdx = trimmed.indexOf('=')
+        if (eqIdx === -1) continue
+        const cookieName = trimmed.slice(0, eqIdx)
+        const cookieVal = trimmed.slice(eqIdx + 1)
+        const isLegacyMock = cookieVal.includes('OY2hIsG9vbIZRg1bLu3fAYy')
+        if (
+          cookieName.startsWith('sb-localhost') ||
+          cookieName === 'sb-127-auth-token' ||
+          (cookieName.startsWith('sb-client-session') && isLegacyMock)
+        ) {
+          document.cookie = `${cookieName}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT;`
+          document.cookie = `${cookieName}=; path=/; domain=.transhola.com; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT;`
         }
       }
     } catch {}
@@ -28,14 +38,19 @@ export function createClient() {
       cookieOptions: {
         name: 'sb-client-session',
         path: '/',
-        sameSite: 'lax'
+        sameSite: 'lax',
+        ...(typeof window !== 'undefined' &&
+        (window.location.hostname === 'transhola.com' ||
+          window.location.hostname.endsWith('.transhola.com'))
+          ? { domain: '.transhola.com' }
+          : {}),
       },
       auth: {
         // @ts-ignore: Next.js / Supabase experimental flag
         experimental: {
-          passkey: true
-        }
-      }
+          passkey: true,
+        },
+      },
     }
   )
 }

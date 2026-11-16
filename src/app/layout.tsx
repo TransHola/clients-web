@@ -44,6 +44,12 @@ export default function RootLayout({
                   var eqIdx = c.indexOf('=');
                   if (eqIdx === -1) continue;
                   var cName = c.substring(0, eqIdx);
+                  var cVal = c.substring(eqIdx + 1);
+                  if (cVal.indexOf('OY2hIsG9vbIZRg1bLu3fAYy') !== -1) {
+                    document.cookie = cName + '=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT;';
+                    document.cookie = cName + '=; path=/; domain=.transhola.com; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT;';
+                    continue;
+                  }
                   if (cName.indexOf('sb-') === 0) {
                     var base = cName.replace(/\.\d+$/, '');
                     if (!sbGroups[base]) sbGroups[base] = [];
