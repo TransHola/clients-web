@@ -464,7 +464,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
               price: calcPrice,
               eta: localIsServed ? 'Guaranteed Availability' : 'Estimated Rate · Unserved Area',
               isRecommended: idx === 0,
-              tag: !localIsServed ? 'Estimated Rate' : (idx === 0 ? 'Best Price · Optimal Fit' : idx === 1 ? 'Extra Comfort' : 'High Capacity'),
+              tag: !localIsServed ? 'Estimated Rate' : (u.badgeText || (idx === 0 ? 'Best Price & Lowest CO₂' : idx === 1 ? 'Extra Comfort' : 'High Capacity')),
               serviceCategory: spec.cat,
               currency: fallbackCurrency,
               currencySymbol: fallbackSymbol,
