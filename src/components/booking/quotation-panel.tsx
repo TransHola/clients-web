@@ -393,21 +393,25 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           const fallbackSymbol = currEntry.sym;
           const rateFactor = currEntry.mult;
 
+          const explicitTotalHrs = Number(bookingDetails?.effectiveTotalHours || 0);
           const durHrs = Math.max(1, Number(payload.durationHours) || (dist / 65));
-          const isRoundTrip = tripType === 'round-trip' || tripType === 'round_trip';
+          const isRoundTrip = tripType === 'round-trip' || tripType === 'round_trip' || tripType === 'roundtrip';
           const isShuttle = tripType === 'shuttle';
 
-          // Country-specific configured vehicle catalog & operational rates aligned with Super Admin presets
+          // Commercial Group Transport Whole-Hour Charter Block Billing (5-min grace tolerance, never per-minute fractional)
           const computeFallbackUnitQuote = (hourlyBase: number, tier4hRate: number, minHrs: number, deadheadPerUnit: number, dailyMultiRate: number, mealFee: number, lodgingFee: number, taxPct: number, unitIsMiles: boolean) => {
             const dUnits = unitIsMiles ? dist * 0.621371 : dist;
             const billableDist = isRoundTrip ? dUnits * 2 : dUnits;
-            const billableHrs = Math.max(minHrs, isRoundTrip ? durHrs * 2 : durHrs);
+            const rawServiceHrs = explicitTotalHrs > 0 ? explicitTotalHrs : (isRoundTrip ? durHrs * 2 : durHrs);
+            const wholeCharterHrs = Math.max(1, Math.ceil(Math.max(0.1, rawServiceHrs - (5 / 60))));
+            const billableHrs = Math.max(Math.ceil(minHrs), wholeCharterHrs);
             let charterBase = 0;
             if (isRoundTrip && numDays >= 2 && dailyMultiRate > 0) {
               const incDist = 200 * numDays;
               const incHrs = 10 * numDays;
+              const overageWholeHrs = Math.max(0, Math.ceil(Math.max(0, rawServiceHrs - (5 / 60)) - incHrs));
               charterBase = (dailyMultiRate * numDays)
-                + Math.max(0, billableHrs - incHrs) * (dailyMultiRate / 10)
+                + overageWholeHrs * (dailyMultiRate / 10)
                 + Math.max(0, billableDist - incDist) * deadheadPerUnit;
             } else {
               const first4 = Math.min(4, billableHrs);

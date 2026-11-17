@@ -540,14 +540,51 @@ export function BookingPanel({
 
   // ── Trip Type & Active Trip ────────────────────────────────────────────────
   type TripType = 'one-way' | 'roundtrip' | 'shuttle' | 'multi-day'
-  // Shuttle-specific: pickup wait time + per-stop entries
-  const [pickupWaitMin, setPickupWaitMin] = React.useState(5)
+  // Shuttle-specific & Smart Group-Size Dynamic Boarding/Offloading Waits
+  const [pickupWaitMin, setPickupWaitMin] = React.useState(10)
   const [pickupWaitUnit, setPickupWaitUnit] = React.useState<'min' | 'hr'>('min')
-  const [dropoffWaitMin, setDropoffWaitMin] = React.useState(5)
+  const [isPickupWaitCustom, setIsPickupWaitCustom] = React.useState(false)
+  const [dropoffWaitMin, setDropoffWaitMin] = React.useState(10)
   const [dropoffWaitUnit, setDropoffWaitUnit] = React.useState<'min' | 'hr'>('min')
-  type StopEntry = { id: string; address: string; loc: any; stopDurationMin: number }
+  const [isDropoffWaitCustom, setIsDropoffWaitCustom] = React.useState(false)
+  const [userConfirmedExtendedStandby, setUserConfirmedExtendedStandby] = React.useState(false)
+  type StopEntry = { id: string; address: string; loc: any; stopDurationMin: number; waitConfirmed?: boolean }
   const [stops, setStops] = React.useState<StopEntry[]>([])
   const [stopDurationUnit, setStopDurationUnit] = React.useState<Record<string, 'min' | 'hr'>>({}) // per-stop unit toggle
+
+  const smartGroupWaitThresholds = React.useMemo(() => {
+    const pax = Math.max(1, Number(passengers) || 1)
+    let minPickup = 10
+    let minDropoff = 10
+    let minStop = 10
+    if (pax >= 221) { minPickup = 45; minDropoff = 35; minStop = 30 }
+    else if (pax >= 113) { minPickup = 40; minDropoff = 30; minStop = 30 }
+    else if (pax >= 57) { minPickup = 30; minDropoff = 25; minStop = 30 }
+    else if (pax >= 36) { minPickup = 25; minDropoff = 20; minStop = 20 }
+    else if (pax >= 19) { minPickup = 20; minDropoff = 15; minStop = 15 }
+    else if (pax >= 8) { minPickup = 15; minDropoff = 10; minStop = 15 }
+
+    const airportRe = /\b(airport|terminal|aeroport|aeropuerto|auh|dxb|dwc|shj|jfk|ewr|lga|lhr|lgw|cdg|ory|mad|bcn|cmn|rak|port|cruise)\b/i
+    if (airportRe.test(pickupValue || '')) minPickup += 10
+    if (airportRe.test(dropoffValue || '')) minDropoff += 5
+    const minCharterHrs = pax >= 30 ? 5 : pax >= 8 ? 4 : 2
+    return { pax, minPickup, minDropoff, minStop, minCharterHrs }
+  }, [passengers, pickupValue, dropoffValue])
+
+  React.useEffect(() => {
+    const { minPickup, minDropoff, minStop } = smartGroupWaitThresholds
+    if (!isPickupWaitCustom || pickupWaitMin < minPickup) {
+      setPickupWaitMin(minPickup)
+    }
+    if (!isDropoffWaitCustom || dropoffWaitMin < minDropoff) {
+      setDropoffWaitMin(minDropoff)
+    }
+    setStops(prev =>
+      prev.some(s => (s.stopDurationMin || 0) < minStop)
+        ? prev.map(s => (s.stopDurationMin || 0) < minStop ? { ...s, stopDurationMin: minStop } : s)
+        : prev
+    )
+  }, [smartGroupWaitThresholds, isPickupWaitCustom, isDropoffWaitCustom])
   const [shuttleTotalSec, setShuttleTotalSec] = React.useState<number | null>(null)
   const [shuttleLoading, setShuttleLoading] = React.useState(false)
   const [manualShuttleInterval, setManualShuttleInterval] = React.useState<number | null>(null)
@@ -911,7 +948,7 @@ export function BookingPanel({
     );
   }, [startDate, tripType, activeDayIdx, multiDayStore]);
 
-  const addStop = () => setStops(prev => [...prev, { id: Date.now().toString(), address: '', loc: null, stopDurationMin: 1 }])
+  const addStop = () => setStops(prev => [...prev, { id: Date.now().toString(), address: '', loc: null, stopDurationMin: Math.max(30, smartGroupWaitThresholds.minStop), waitConfirmed: false }])
   const removeStop = (id: string) => setStops(prev => prev.filter(s => s.id !== id))
   const updateStop = (id: string, updates: any) => setStops(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
 
@@ -1236,37 +1273,37 @@ export function BookingPanel({
         returnTripSec = Math.ceil(returnDuration * 1.15);
       }
 
-      // For roundtrip, minimum trip completion is Arrival + Dropoff Wait Time + Return Trip Sec
-      const minReturn = tripType === 'roundtrip'
+      // For roundtrip, minimum trip completion is Arrival + Dropoff Wait Time + Return Trip Sec (snapped to 15m slot)
+      const rawMinReturn = tripType === 'roundtrip'
         ? addSecondsToDatetime(ata.date, ata.time, dropoffWaitMin * 60 + returnTripSec)
         : ata;
+      const [mrH, mrM] = (rawMinReturn.time || '09:00').split(':').map(Number);
+      const roundedMrMins = Math.min(1425, Math.ceil(((mrH || 0) * 60 + (mrM || 0)) / 15) * 15);
+      const minReturn = {
+        date: rawMinReturn.date,
+        time: `${String(Math.floor(roundedMrMins / 60)).padStart(2, '0')}:${String(roundedMrMins % 60).padStart(2, '0')}`,
+      };
 
-      const targetDate = tripType === 'multi-day' ? activeDate : endDate
+      const targetDate = tripType === 'multi-day' ? activeDate : endDate;
       if (!targetDate || !endTime || isEndBeforeAta(targetDate, endTime, minReturn.date, minReturn.time)) {
-        const isInitial = !endTime;
-        if (tripType === 'roundtrip') {
-          if (isInitial) {
-            // Suggest default buffer (2 hours beyond arrival)
-            const suggested = addSecondsToDatetime(ata.date, ata.time, 7200 + returnTripSec);
-            // But if wait time > 2 hours, use minReturn
-            const finalSuggested = isEndBeforeAta(suggested.date, suggested.time, minReturn.date, minReturn.time) ? minReturn : suggested;
-            setEndDate(finalSuggested.date);
-            setEndTime(finalSuggested.time);
-          } else {
-            // They changed wait time, violating bounds -> strict clamp to new minimum
-            setEndDate(minReturn.date);
-            setEndTime(minReturn.time);
-          }
-        } else if (tripType === 'multi-day') {
-          const suggested = addSecondsToDatetime(ata.date, ata.time, isInitial ? 7200 : 0);
-          setEndTime(suggested.time);
+        const hadExplicitShortEnd = Boolean(endTime && targetDate);
+        if (tripType !== 'multi-day') {
+          setEndDate(minReturn.date);
         }
-        setAtaAutoFixed(true) // Highlights the auto-adjustment warning banner
+        setEndTime(minReturn.time);
+        setUserConfirmedExtendedStandby(false);
+        setAtaAutoFixed(hadExplicitShortEnd);
+      } else if (syncEndTime && !userConfirmedExtendedStandby && (endTime !== minReturn.time || (tripType !== 'multi-day' && endDate !== minReturn.date))) {
+        if (tripType !== 'multi-day') {
+          setEndDate(minReturn.date);
+        }
+        setEndTime(minReturn.time);
+        setAtaAutoFixed(false);
       } else {
-        setAtaAutoFixed(false)
+        setAtaAutoFixed(false);
       }
     }
-  }, [startDate, startTime, routeDuration, tripType, endDate, endTime, stops, pickupWaitMin, dropoffWaitMin, activeDayIdx, multiDayStore, roundTripMode, routeLegs])
+  }, [startDate, startTime, routeDuration, tripType, endDate, endTime, stops, pickupWaitMin, dropoffWaitMin, activeDayIdx, multiDayStore, roundTripMode, routeLegs, syncEndTime, userConfirmedExtendedStandby])
 
   // 4. Initialize & enforce Shuttle minimum finish time boundary
   React.useEffect(() => {
@@ -1310,23 +1347,19 @@ export function BookingPanel({
       if (tripType === 'roundtrip') {
         const returnDuration = (roundTripMode === 'continuous' && routeLegs?.length)
           ? routeLegs[routeLegs.length - 1].duration
-          : routeDuration;
+          : (routeDuration || 0);
         returnTripSec = Math.ceil(returnDuration * 1.15);
       }
 
-      // Calculate the absolute minimum return boundary
-      let minReturn;
-      if (tripType === 'roundtrip') {
-        if (stops && stops.length > 0) {
-          const lastStop = stops[stops.length - 1];
-          const lastStopWaitMin = lastStop.stopDurationMin || 0;
-          minReturn = addSecondsToDatetime(ataDate, ataTime, -lastStopWaitMin * 60 + dropoffWaitMin * 60 + returnTripSec);
-        } else {
-          minReturn = addSecondsToDatetime(ataDate, ataTime, returnTripSec);
-        }
-      } else {
-        minReturn = { date: ataDate || startDate || today, time: ataTime || '00:00' };
-      }
+      const rawMinReturn = tripType === 'roundtrip'
+        ? addSecondsToDatetime(ataDate, ataTime, dropoffWaitMin * 60 + returnTripSec)
+        : { date: ataDate || startDate || today, time: ataTime || '00:00' };
+      const [mrH, mrM] = (rawMinReturn.time || '09:00').split(':').map(Number);
+      const roundedMrMins = Math.min(1425, Math.ceil(((mrH || 0) * 60 + (mrM || 0)) / 15) * 15);
+      const minReturn = {
+        date: rawMinReturn.date,
+        time: `${String(Math.floor(roundedMrMins / 60)).padStart(2, '0')}:${String(roundedMrMins % 60).padStart(2, '0')}`,
+      };
 
       const targetDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : finalDate;
       if (isEndBeforeAta(targetDate, finalTime, minReturn.date, minReturn.time)) {
@@ -1338,48 +1371,11 @@ export function BookingPanel({
           finalTime = minReturn.time;
           forced = true;
         }
-      }
-
-      // Sync wait time if they manually changed the Completion Date & Time
-      if (tripType === 'roundtrip' && !forced && ataDate && ataTime) {
-        try {
-          const [y1, m1, d1] = ataDate.split('-').map(Number);
-          const [hr1, min1] = ataTime.split(':').map(Number);
-          const start = new Date(y1, m1 - 1, d1, hr1, min1);
-
-          const [y2, m2, d2] = finalDate.split('-').map(Number);
-          const [hr2, min2] = finalTime.split(':').map(Number);
-          const end = new Date(y2, m2 - 1, d2, hr2, min2);
-
-          let returnTripSec = 0;
-          if (tripType === 'roundtrip') {
-            const returnDuration = (roundTripMode === 'continuous' && routeLegs?.length)
-              ? routeLegs[routeLegs.length - 1].duration
-              : routeDuration;
-            returnTripSec = Math.ceil(returnDuration * 1.15);
-          }
-
-          let diffMin = Math.round((end.getTime() - start.getTime() - (returnTripSec * 1000)) / 60000);
-          if (diffMin >= 0) {
-            if (stops && stops.length > 0) {
-              const lastStop = stops[stops.length - 1];
-              const lastStopWaitMin = lastStop.stopDurationMin || 0;
-              const newLastStopWait = Math.max(0, diffMin + lastStopWaitMin - dropoffWaitMin);
-              setStops(prev => {
-                const updated = [...prev];
-                if (updated.length > 0) {
-                  updated[updated.length - 1] = {
-                    ...updated[updated.length - 1],
-                    stopDurationMin: newLastStopWait
-                  };
-                }
-                return updated;
-              });
-            } else {
-              setDropoffWaitMin(diffMin);
-            }
-          }
-        } catch (e) { }
+        setUserConfirmedExtendedStandby(false);
+      } else {
+        // User selected an End Time at or above expected route completion: pause auto-shrink and show Heads-Up choice
+        setSyncEndTime(false);
+        setUserConfirmedExtendedStandby(false);
       }
     } else if (tripType === 'shuttle' && shuttleTotalSec && startDate && startTime) {
       const activeDate = multiDayStore[activeDayIdx]?.dateStr || startDate
@@ -2495,13 +2491,110 @@ export function BookingPanel({
                             />
                             {((tripType === 'roundtrip' && roundTripMode === 'continuous') || tripType === 'multi-day') && (
                               <label style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'absolute', bottom: '-22px', right: '4px', cursor: 'pointer', animation: 'fadeIn 0.2s ease' }}>
-                                <input type="checkbox" checked={syncEndTime} onChange={(e) => setSyncEndTime(e.target.checked)} style={{ width: '11px', height: '11px', cursor: 'pointer', accentColor: '#2563eb' }} />
+                                <input
+                                  type="checkbox"
+                                  checked={syncEndTime}
+                                  onChange={(e) => {
+                                    setSyncEndTime(e.target.checked);
+                                    if (e.target.checked) setUserConfirmedExtendedStandby(false);
+                                  }}
+                                  style={{ width: '11px', height: '11px', cursor: 'pointer', accentColor: '#2563eb' }}
+                                />
                                 <span style={{ fontSize: '10px', fontWeight: 600, color: '#64748b' }}>Sync with Route Activity timing</span>
                               </label>
                             )}
                           </div>
                         )}
                       </div>
+
+                      {/* Smart Hourly Charter Timing Advisor & Bidirectional Heads-Up */}
+                      {(() => {
+                        if (!routeDuration || !startTime || !endTime || (tripType !== 'roundtrip' && tripType !== 'multi-day')) return null;
+                        const activeDate = multiDayStore[activeDayIdx]?.dateStr || startDate;
+                        if (!activeDate || !ataDate || !ataTime) return null;
+
+                        let returnTripSec = 0;
+                        if (tripType === 'roundtrip') {
+                          const returnDuration = (roundTripMode === 'continuous' && routeLegs?.length)
+                            ? routeLegs[routeLegs.length - 1].duration
+                            : routeDuration;
+                          returnTripSec = Math.ceil(returnDuration * 1.15);
+                        }
+                        const rawMinReturn = tripType === 'roundtrip'
+                          ? addSecondsToDatetime(ataDate, ataTime, dropoffWaitMin * 60 + returnTripSec)
+                          : { date: ataDate, time: ataTime };
+                        const [mrH, mrM] = (rawMinReturn.time || '09:00').split(':').map(Number);
+                        const roundedMrMins = Math.min(1425, Math.ceil(((mrH || 0) * 60 + (mrM || 0)) / 15) * 15);
+                        const syncedEndStr = `${String(Math.floor(roundedMrMins / 60)).padStart(2, '0')}:${String(roundedMrMins % 60).padStart(2, '0')}`;
+
+                        const [sH, sM] = startTime.split(':').map(Number);
+                        const [eH, eM] = endTime.split(':').map(Number);
+                        const startMins = (sH || 0) * 60 + (sM || 0);
+                        const endMins = (eH || 0) * 60 + (eM || 0);
+                        const selectedMins = Math.max(0, endMins - startMins);
+                        const expectedMins = Math.max(0, roundedMrMins - startMins);
+
+                        const minC = smartGroupWaitThresholds.minCharterHrs;
+                        const expBillableHrs = Math.max(minC, Math.ceil(Math.max(0.1, (expectedMins - 5) / 60)));
+                        const selBillableHrs = Math.max(minC, Math.ceil(Math.max(0.1, (selectedMins - 5) / 60)));
+
+                        if (ataAutoFixed) {
+                          return (
+                            <div style={{ marginTop: '28px', padding: '10px 12px', borderRadius: '12px', background: '#eff6ff', border: '1.5px solid #93c5fd', fontSize: '11px', color: '#1e3a8a', lineHeight: 1.45 }}>
+                              <div style={{ fontWeight: 800, color: '#1e40af', marginBottom: '2px' }}>
+                                ⚡ Minimum Charter Time Enforced ({expBillableHrs} Billable Hrs)
+                              </div>
+                              Your route, {smartGroupWaitThresholds.pax}-pax boarding &amp; stops require finishing at or after <b>{formatTimeStr(syncedEndStr)}</b>. Commercial group operators charge in full-hour blocks ({expBillableHrs} hrs).
+                            </div>
+                          );
+                        }
+
+                        if (selectedMins > expectedMins + 15) {
+                          const extraMins = selectedMins - expectedMins;
+                          const extraLabel = extraMins >= 60 ? `${Math.floor(extraMins / 60)}h ${extraMins % 60}m` : `${extraMins}m`;
+                          if (userConfirmedExtendedStandby) {
+                            return (
+                              <div style={{ marginTop: '28px', padding: '9px 12px', borderRadius: '12px', background: '#ecfdf5', border: '1.5px solid #6ee7b7', fontSize: '11px', color: '#064e3b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                <span>✓ <b>Extended Standby ({selBillableHrs} Billable Hrs)</b> until {formatTimeStr(endTime)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => { setUserConfirmedExtendedStandby(false); setSyncEndTime(true); setEndTime(syncedEndStr); }}
+                                  style={{ padding: '4px 9px', borderRadius: '7px', background: '#2563eb', color: 'white', border: 'none', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Match Route ({formatTimeStr(syncedEndStr)} · {expBillableHrs} Hrs)
+                                </button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div style={{ marginTop: '28px', padding: '10px 12px', borderRadius: '12px', background: '#fffbeb', border: '1.5px solid #fcd34d', fontSize: '11px', color: '#78350f', lineHeight: 1.45 }}>
+                              <div style={{ fontWeight: 800, color: '#92400e', marginBottom: '3px' }}>
+                                ⏱️ Heads-Up: +{extraLabel} Above Expected Route Time
+                              </div>
+                              <div>
+                                Selected schedule reserves <b>{selBillableHrs} billable hrs</b> vs. <b>{expBillableHrs} billable hrs</b> for your route &amp; stops. Group transport operators bill hourly (not per minute):
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '7px', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => { setUserConfirmedExtendedStandby(false); setSyncEndTime(true); setEndTime(syncedEndStr); }}
+                                  style={{ padding: '5px 10px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Match Route ({formatTimeStr(syncedEndStr)} · {expBillableHrs} Hrs)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setUserConfirmedExtendedStandby(true); setSyncEndTime(false); }}
+                                  style={{ padding: '5px 10px', borderRadius: '8px', background: 'white', color: '#334155', border: '1px solid #cbd5e1', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Keep {formatTimeStr(endTime)} ({selBillableHrs} Hrs)
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2596,16 +2689,10 @@ export function BookingPanel({
                             const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
 
                             const handleWaitChange = (newMin: number) => {
-                              const validNewMin = Math.max(0, newMin);
-                              const deltaMin = validNewMin - pickupWaitMin;
+                              const minP = smartGroupWaitThresholds.minPickup;
+                              const validNewMin = Math.min(720, Math.max(minP, newMin));
+                              setIsPickupWaitCustom(validNewMin > minP);
                               setPickupWaitMin(validNewMin);
-
-                              const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
-                              if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
-                                const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
-                                if (tripType !== 'multi-day') setEndDate(shifted.date);
-                                setEndTime(shifted.time);
-                              }
                             };
 
                             return (
@@ -2615,7 +2702,7 @@ export function BookingPanel({
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '130px'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                                  <input className="no-spinner" type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: '46px', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 800, color: '#0f172a', background: 'transparent', textAlign: 'center' }} />
+                                  <input className="no-spinner" type="number" value={displayVal} min={isHr ? 0.5 : smartGroupWaitThresholds.minPickup} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: '46px', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 800, color: '#0f172a', background: 'transparent', textAlign: 'center' }} />
                                   <Tooltip>
                                     <TooltipTrigger onClick={() => setPickupWaitUnit(isHr ? 'min' : 'hr')} style={{ padding: '0 4px', fontSize: '10px', fontWeight: 800, border: 'none', cursor: 'pointer', background: 'transparent', color: '#7c3aed', display: 'flex', alignItems: 'center', height: '100%' }}>
                                       {isHr ? 'hr' : 'min'}
@@ -2654,12 +2741,15 @@ export function BookingPanel({
                                 else if (diffDays > 1) daySuffix = ` (+${diffDays} days)`;
                               }
                               return (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700 }}>
                                     Arrive {formatTimeStr(activeTimeStr)}
                                   </span>
-                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
-                                    Depart at {formatTimeStr(result.time)}{daySuffix}
+                                  <span style={{ fontSize: '10px', color: '#6d28d9', fontWeight: 700, background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '1px 7px', borderRadius: '999px' }}>
+                                    ⏱ {pickupWaitMin}m Boarding ({smartGroupWaitThresholds.pax} Pax)
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 700 }}>
+                                    Depart {formatTimeStr(result.time)}{daySuffix}
                                   </span>
                                 </div>
                               );
@@ -2704,20 +2794,13 @@ export function BookingPanel({
                                   const unit = stopDurationUnit[stop.id] || 'min';
                                   const isHr = unit === 'hr';
                                   const displayVal = isHr ? parseFloat((stop.stopDurationMin / 60).toFixed(2)) : stop.stopDurationMin;
-                                  const step = isHr ? 0.5 : 1;
+                                  const step = isHr ? 0.5 : 5;
                                   const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
 
                                   const handleWaitChange = (newMin: number) => {
-                                    const validNewMin = Math.max(0, newMin);
-                                    const deltaMin = validNewMin - stop.stopDurationMin;
-                                    updateStop(stop.id, { stopDurationMin: validNewMin });
-
-                                    const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
-                                    if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
-                                      const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
-                                      if (tripType !== 'multi-day') setEndDate(shifted.date);
-                                      setEndTime(shifted.time);
-                                    }
+                                    const minS = smartGroupWaitThresholds.minStop;
+                                    const validNewMin = Math.min(720, Math.max(minS, newMin));
+                                    updateStop(stop.id, { stopDurationMin: validNewMin, waitConfirmed: true });
                                   };
 
                                   return (
@@ -2749,22 +2832,52 @@ export function BookingPanel({
                               <button onClick={() => removeStop(stop.id)} title="Remove stop" style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1.5px solid #fecaca', background: '#fff5f5', cursor: 'pointer', color: '#ef4444', fontSize: '15px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                             </div>
 
-                            {/* Stop leg info */}
-                            {stop.loc && legInfo && (
-                              <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                                  {legInfo.eta && (
-                                    <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>
-                                      Arrive {formatEtaStr(legInfo.eta)} · {formatDistance(legInfo.distance, clientGeoContext.distanceUnit)}
-                                    </span>
-                                  )}
-                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600 }}>
-                                    {legInfo.departEta ? <>Depart at {formatEtaStr(legInfo.departEta)}</> : 'Depart time...'}
+                            {/* Stop leg info + Explicit Waiting Duration Indicator & Quick Reminder */}
+                            <div style={{ padding: '0 14px 8px 36px', animation: 'slideDown 0.2s ease' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                                {stop.loc && legInfo?.eta && (
+                                  <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700 }}>
+                                    Arrive {formatEtaStr(legInfo.eta)}
                                   </span>
-
-                                </div>
+                                )}
+                                <span style={{ fontSize: '10px', color: '#6d28d9', fontWeight: 800, background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '1px 7px', borderRadius: '999px' }}>
+                                  ⏱ Stop Wait: {stop.stopDurationMin >= 60 && stop.stopDurationMin % 30 === 0 ? `${stop.stopDurationMin / 60} hr` : `${stop.stopDurationMin}m`}
+                                </span>
+                                {stop.loc && legInfo?.departEta && (
+                                  <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 700 }}>
+                                    Depart {formatEtaStr(legInfo.departEta)}
+                                  </span>
+                                )}
                               </div>
-                            )}
+
+                              {stop.waitConfirmed === false && (
+                                <div style={{ marginTop: '5px', padding: '5px 8px', borderRadius: '8px', background: '#fffbeb', border: '1px dashed #f59e0b', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#b45309' }}>
+                                    ⏰ Confirm waiting duration at Stop #{idx + 1}:
+                                  </span>
+                                  <div style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {[
+                                      { label: '30m', mins: 30, unit: 'min' as const },
+                                      { label: '1 hr', mins: 60, unit: 'hr' as const },
+                                      { label: '2 hr', mins: 120, unit: 'hr' as const },
+                                      { label: '3 hr', mins: 180, unit: 'hr' as const },
+                                    ].map((p) => (
+                                      <button
+                                        key={p.label}
+                                        type="button"
+                                        onClick={() => {
+                                          setStopDurationUnit((prev: any) => ({ ...prev, [stop.id]: p.unit }));
+                                          updateStop(stop.id, { stopDurationMin: Math.max(smartGroupWaitThresholds.minStop, p.mins), waitConfirmed: true });
+                                        }}
+                                        style={{ padding: '2px 7px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, background: 'white', color: '#92400e', border: '1px solid #fcd34d', cursor: 'pointer' }}
+                                      >
+                                        {p.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -2833,16 +2946,10 @@ export function BookingPanel({
                           const toMin = (v: number) => isHr ? Math.round(v * 60) : Math.round(v);
 
                           const handleWaitChange = (newMin: number) => {
-                            const validNewMin = Math.max(0, newMin);
-                            const deltaMin = validNewMin - dropoffWaitMin;
+                            const minD = smartGroupWaitThresholds.minDropoff;
+                            const validNewMin = Math.min(720, Math.max(minD, newMin));
+                            setIsDropoffWaitCustom(validNewMin > minD);
                             setDropoffWaitMin(validNewMin);
-
-                            const activeDate = tripType === 'multi-day' ? (multiDayStore[activeDayIdx]?.dateStr || startDate) : (endDate || startDate);
-                            if (syncEndTime && (tripType === 'roundtrip' || tripType === 'multi-day') && activeDate && endTime) {
-                              const shifted = addSecondsToDatetime(activeDate, endTime, deltaMin * 60);
-                              if (tripType !== 'multi-day') setEndDate(shifted.date);
-                              setEndTime(shifted.time);
-                            }
                           };
 
                           return (
@@ -2852,7 +2959,7 @@ export function BookingPanel({
                               display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '130px'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                                <input className="no-spinner" type="number" value={displayVal} min={0} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: '46px', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 800, color: '#0f172a', background: 'transparent', textAlign: 'center' }} />
+                                <input className="no-spinner" type="number" value={displayVal} min={isHr ? 0.5 : smartGroupWaitThresholds.minDropoff} step={step} onChange={(e) => handleWaitChange(toMin(parseFloat(e.target.value) || 0))} style={{ width: '46px', border: 'none', outline: 'none', fontSize: '12px', fontWeight: 800, color: '#0f172a', background: 'transparent', textAlign: 'center' }} />
                                 <Tooltip>
                                   <TooltipTrigger onClick={() => setDropoffWaitUnit(isHr ? 'min' : 'hr')} style={{ padding: '0 4px', fontSize: '10px', fontWeight: 800, border: 'none', cursor: 'pointer', background: 'transparent', color: '#7c3aed', display: 'flex', alignItems: 'center', height: '100%' }}>
                                     {isHr ? 'hr' : 'min'}
@@ -3903,6 +4010,18 @@ export function BookingPanel({
               adaVehicleCount,
               distance: routeDistance ? Math.round(clientGeoContext.distanceUnit === 'mi' ? routeDistance * 0.000621371 : routeDistance / 1000) : 40,
               duration: routeDuration || 3600,
+              effectiveTotalHours: (() => {
+                const driveSec = (routeDuration || 3600) * (tripType === 'roundtrip' && !(roundTripMode === 'continuous' && routeLegs && routeLegs.length > 1) ? 2 : 1);
+                const waitsSec = ((pickupWaitMin || 0) + (dropoffWaitMin || 0) + stops.reduce((sum, s) => sum + (s.stopDurationMin || 0), 0)) * 60;
+                let windowSec = 0;
+                if (startTime && endTime && (tripType === 'roundtrip' || tripType === 'shuttle' || tripType === 'multi-day')) {
+                  const [sh, sm] = startTime.split(':').map(Number);
+                  const [eh, em] = endTime.split(':').map(Number);
+                  const diffM = ((eh || 0) * 60 + (em || 0)) - ((sh || 0) * 60 + (sm || 0));
+                  if (diffM > 0) windowSec = diffM * 60;
+                }
+                return Math.max(driveSec + waitsSec, windowSec) / 3600;
+              })(),
               quotation_db_id: quotationDbId,
               option: hydratedOption,
               routePolyline: routePolyline
