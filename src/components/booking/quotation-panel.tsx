@@ -28,16 +28,19 @@ const BOOKING_API_URL =
     ? process.env.NEXT_PUBLIC_BOOKING_API_URL
     : '/api/booking-engine';
 
+let _cachedClientAuth: { user: any | null; token?: string; ts: number } | null = null;
+
 async function resolveActiveClientAuth(): Promise<{ user: any | null; token?: string }> {
+  if (_cachedClientAuth && Date.now() - _cachedClientAuth.ts < 15000 && _cachedClientAuth.user) {
+    return { user: _cachedClientAuth.user, token: _cachedClientAuth.token };
+  }
+
   try {
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
+      _cachedClientAuth = { user: session.user, token: session.access_token, ts: Date.now() };
       return { user: session.user, token: session.access_token };
-    }
-    const { data } = await supabase.auth.getUser();
-    if (data?.user) {
-      return { user: data.user, token: session?.access_token };
     }
   } catch {}
 
@@ -46,6 +49,7 @@ async function resolveActiveClientAuth(): Promise<{ user: any | null; token?: st
     if (meRes.ok) {
       const meJson = await meRes.json();
       if (meJson?.authenticated && meJson?.user) {
+        _cachedClientAuth = { user: meJson.user, token: undefined, ts: Date.now() };
         return { user: meJson.user, token: undefined };
       }
     }
@@ -2073,23 +2077,24 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
   React.useEffect(() => {
     async function fetchCards() {
       try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const userId = session?.user?.id;
-        const userEmail = session?.user?.email;
+        const { user: authUser, token } = await resolveActiveClientAuth();
+        const userId = authUser?.id;
+        const userEmail = authUser?.email;
 
         if (!userId) {
           setIsLoadingCards(false);
           return;
         }
 
+        const headers: Record<string, string> = {
+          "x-user-id": userId,
+          "x-user-email": userEmail || ""
+        };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
         const res = await fetch(`${BOOKING_API_URL}/payment-methods`, {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "x-user-id": userId,
-            "x-user-email": userEmail || ""
-          }
+          credentials: "include",
+          headers
         });
 
         if (res.ok) {
@@ -2434,6 +2439,10 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
             )}
             <PaymentElement
               onReady={() => setIsReady(true)}
+              onLoadError={(err) => {
+                console.warn("[PaymentElement] Load error:", err);
+                setIsReady(true);
+              }}
               options={{
                 wallets: {
                   link: 'never'
@@ -2502,29 +2511,49 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
 export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
   const [clientSecret, setClientSecret] = React.useState("");
   const [intentType, setIntentType] = React.useState("payment");
+  const initializedKeyRef = React.useRef<string>("");
+
+  const optionId = option?.id || option?.label || "default";
+  const optionPrice = Number(option?.price || 0);
+  const quoteDbId = String(bookingDetails?.quotation_db_id || "");
+  const resolvedCountry = String(bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || "AE").toUpperCase();
 
   React.useEffect(() => {
+    const intentKey = `${optionId}|${optionPrice}|${currency}|${quoteDbId}|${resolvedCountry}`;
+    if (initializedKeyRef.current === intentKey) return;
+    initializedKeyRef.current = intentKey;
+
+    let cancelled = false;
     async function initPayment() {
       try {
         const { user: authUser, token } = await resolveActiveClientAuth();
+        if (cancelled) return;
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token || 'BYPASS_AUTH'}`
+        };
+        if (authUser?.id) headers["x-user-id"] = authUser.id;
+        if (authUser?.email) headers["x-user-email"] = authUser.email;
 
         const res = await fetch(`${BOOKING_API_URL}/create-payment-intent`, {
           method: "POST",
           credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token || 'BYPASS_AUTH'}`
-          },
+          headers,
           body: JSON.stringify({
-            amount: option.price,
+            amount: optionPrice,
             currency,
-            bookingDetails,
-            countryCode: bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || 'GLOBAL',
+            countryCode: resolvedCountry,
             userId: authUser?.id,
             userEmail: authUser?.email,
-            savePaymentMethod: true
+            savePaymentMethod: true,
+            metadata: {
+              quotationId: quoteDbId,
+              vehicle: String(option?.label || "Charter Fleet").slice(0, 80),
+            }
           })
         });
+        if (cancelled) return;
         const data = await res.json().catch(() => ({}));
         if (data.clientSecret) {
           setClientSecret(data.clientSecret);
@@ -2534,14 +2563,40 @@ export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack,
           setIntentType("payment");
         }
       } catch (err) {
+        if (cancelled) return;
         console.error(err);
         setClientSecret("pi_mock_secret_sandbox");
       }
     }
     initPayment();
-  }, [option, currency, bookingDetails]);
+    return () => {
+      cancelled = true;
+    };
+  }, [optionId, optionPrice, currency, quoteDbId, resolvedCountry]);
 
-  if (!clientSecret) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading secure payment...</div>;
+  if (!clientSecret) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white' }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button
+            type="button"
+            onClick={onBack}
+            style={{ padding: '6px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', background: 'white', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#334155' }}
+          >
+            <ArrowLeft style={{ width: '14px', height: '14px' }} /> Cancel
+          </button>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: '#64748b' }}>{currency} {optionPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '40px', textAlign: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.85s linear infinite' }} />
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Initializing Encrypted Checkout…</p>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Preparing secure payment session for {option?.label}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (clientSecret.includes('mock')) {
     return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />

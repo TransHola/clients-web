@@ -91,6 +91,11 @@ export default function QuotationsPage() {
   const valid = quotes.filter((q) => q.status === "valid")
   const expired = quotes.filter((q) => q.status === "expired")
 
+  const checkoutBookingDetails = React.useMemo(() => {
+    if (!viewingTimeline?.rawDetails) return null
+    return { ...viewingTimeline.rawDetails, quotation_db_id: viewingTimeline.db_id }
+  }, [viewingTimeline?.db_id, viewingTimeline?.rawDetails])
+
   const hasActivePanel = !!selectedQuote || !!viewingTimeline
 
   const renderActivePanel = () => {
@@ -212,16 +217,22 @@ export default function QuotationsPage() {
            )}
 
            {/* Local Payment Checkout Modal overlay */}
-           {isCheckingOut && details.option && (
-             <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-200 rounded-2xl">
-               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[420px] h-full max-h-[640px] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300">
+           {isCheckingOut && details.option && checkoutBookingDetails && (
+             <div
+               onClick={() => setIsCheckingOut(false)}
+               className="absolute inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-200 rounded-2xl"
+             >
+               <div
+                 onClick={(e) => e.stopPropagation()}
+                 className="bg-white rounded-2xl shadow-2xl w-full max-w-[440px] h-full max-h-[660px] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+               >
                  <PaymentPanel 
                    option={details.option} 
-                   bookingDetails={{ ...details, quotation_db_id: viewingTimeline.db_id }} 
+                   bookingDetails={checkoutBookingDetails} 
                    currency={viewingTimeline.currency}
                    onBack={() => setIsCheckingOut(false)} 
                    onConfirm={(id) => {
-                     router.push(`/trips/${id || 'TRN-QUOTATION'}`)
+                     router.push(`/trips/${id || viewingTimeline.db_id}`)
                    }}
                  />
                </div>

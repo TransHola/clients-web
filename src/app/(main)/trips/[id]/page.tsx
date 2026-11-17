@@ -490,11 +490,32 @@ export default function BookingDetailsProfile() {
          setIsLoading(false)
          return
       }
-      const { data, error } = await supabase
-         .from('bookings')
-         .select('*')
-         .eq('id', decodedId)
-         .maybeSingle();
+      let data: any = null
+      try {
+         const isUuid = /^[0-9a-f-]{36}$/i.test(decodedId)
+         const savedQuoteRefs = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transhola_recent_quote_refs') || '[]') : []
+         const savedBookRefs = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('transhola_recent_booking_refs') || '[]') : []
+         const allRefs = [...savedBookRefs, ...savedQuoteRefs].join(',')
+         const queryUrl = isUuid
+            ? `/api/client-records?id=${encodeURIComponent(decodedId)}${allRefs ? `&refs=${encodeURIComponent(allRefs)}` : ''}`
+            : `/api/client-records?lookupRef=${encodeURIComponent(decodedId)}`
+         const apiRes = await fetch(queryUrl, { credentials: 'include', cache: 'no-store' })
+         if (apiRes.ok) {
+            const json = await apiRes.json().catch(() => null)
+            if (json?.found && json?.record) {
+               data = json.record
+            }
+         }
+      } catch {}
+
+      if (!data) {
+         const direct = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', decodedId)
+            .maybeSingle();
+         data = direct.data
+      }
 
       if (data) {
          let fallbackName = "Guest User";
@@ -541,8 +562,15 @@ export default function BookingDetailsProfile() {
                polyline: details.routePolyline || details.multiDayStore?.[0]?.routePolyline || null
             },
             schedule: {
-               start: data.pickup_date || new Date().toISOString(),
-               end: details.endDate ? new Date(`${details.endDate}T${details.endTime || '00:00'}`).toISOString() : new Date(new Date(data.pickup_date || new Date()).getTime() + 4 * 60 * 60 * 1000).toISOString(),
+               start: data.pickup_date || data.scheduled_at || new Date().toISOString(),
+               end: (() => {
+                  const baseStart = new Date(data.pickup_date || data.scheduled_at || Date.now());
+                  if (details.endDate && details.endTime) {
+                     const parsed = new Date(`${details.endDate}T${details.endTime}`);
+                     if (!isNaN(parsed.getTime())) return parsed.toISOString();
+                  }
+                  return new Date(baseStart.getTime() + 4 * 60 * 60 * 1000).toISOString();
+               })(),
                actualStart: data.started_at,
                actualEnd: data.completed_at
             },

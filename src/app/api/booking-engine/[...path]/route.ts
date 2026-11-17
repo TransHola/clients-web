@@ -290,7 +290,11 @@ async function handleProxy(
   }
 
   const targetUrl = `${getInternalBookingEngineUrl()}/${subpath}${search}`
-  const timeoutMs = subpath === 'checkout' || subpath === 'create-payment-intent' ? 2950 : 2800
+  const isExternalPaymentGatewayCall =
+    subpath === 'checkout' ||
+    subpath === 'create-payment-intent' ||
+    subpath.endsWith('create-setup-intent')
+  const timeoutMs = isExternalPaymentGatewayCall ? 8500 : 2800
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
 
