@@ -44,7 +44,12 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_mock')
-const BOOKING_API_URL = process.env.NEXT_PUBLIC_BOOKING_API_URL || 'http://localhost:8000'
+const BOOKING_API_URL =
+  process.env.NEXT_PUBLIC_BOOKING_API_URL &&
+  !process.env.NEXT_PUBLIC_BOOKING_API_URL.includes('localhost') &&
+  !process.env.NEXT_PUBLIC_BOOKING_API_URL.includes('127.0.0.1')
+    ? process.env.NEXT_PUBLIC_BOOKING_API_URL
+    : '/api/booking-engine'
 
 const invoiceStatusCfg: Record<string, { label: string; icon: any; color: string; badge: string }> = {
   paid: { 

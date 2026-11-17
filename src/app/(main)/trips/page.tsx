@@ -69,12 +69,23 @@ export default function TripsPage() {
     if (!cancellingId) return
     setIsCancelling(true)
     try {
+      const targetBooking = bookings.find(b => b.id === cancellingId)
       const supabase = createClient()
-      const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'cancelled').maybeSingle()
-      if (statusData) {
-        const { error } = await supabase.from('bookings').update({ status_id: statusData.id }).eq('id', cancellingId)
-        if (error) throw error
-      }
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
+
+      const res = await fetch('/api/client-records', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          bookingId: cancellingId,
+          bookingRef: targetBooking?.ref,
+          action: 'cancel',
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to cancel booking')
       setBookings(prev => prev.map(b => b.id === cancellingId ? { ...b, status: 'cancelled', cancellationReason: 'Cancelled by user' } : b))
       setCancellingId(null)
     } catch (e) {
@@ -101,48 +112,34 @@ export default function TripsPage() {
               user = meJson.user
             }
           }
-        } catch {}
+        } catch { }
       }
       setCurrentUser(user || null)
 
-      // Get status maps
-      const { data: statusesData } = await supabase.from('booking_statuses').select('id, code')
-      const quotationId = statusesData?.find(s => s.code === 'quotation')?.id
-      const statusMap = Object.fromEntries(statusesData?.map(s => [s.id, s.code]) || [])
-
-      let query = supabase
-        .from('bookings')
-        .select('*, operator:assigned_operator_id(company_name, phone_number)')
-        .order('created_at', { ascending: false })
-
-      if (user) {
-        const orgId = user?.user_metadata?.organization_id
-        const orgClause = orgId && orgId !== user.id ? `,user_id.eq.${orgId},customer_id.eq.${orgId}` : ''
-        query = query.or(`user_id.eq.${user.id},customer_id.eq.${user.id}${orgClause}`)
-      } else {
-        // If guest, check localStorage for recent booking refs
-        const savedRefsStr = typeof window !== 'undefined' ? localStorage.getItem('transhola_recent_booking_refs') : null
-        const savedRefs = savedRefsStr ? JSON.parse(savedRefsStr) : []
-        if (savedRefs.length > 0) {
-          query = query.in('booking_ref', savedRefs)
-        } else {
-          setBookings([])
-          setLoading(false)
-          return
-        }
+      const savedRefsStr = typeof window !== 'undefined' ? localStorage.getItem('transhola_recent_booking_refs') : null
+      const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : []
+      if (!user && savedRefs.length === 0) {
+        setBookings([])
+        setLoading(false)
+        return
       }
 
-      if (quotationId) {
-        query = query.neq('status_id', quotationId)
-      }
+      const refsQuery = savedRefs.length > 0 ? `&refs=${encodeURIComponent(savedRefs.join(','))}` : ''
+      const headers: Record<string, string> = {}
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
 
-      const { data, error } = await query
-      if (error) throw error
+      const res = await fetch(`/api/client-records?mode=bookings${refsQuery}`, {
+        credentials: 'include',
+        headers,
+        cache: 'no-store',
+      })
+      const json = await res.json().catch(() => ({ records: [] }))
+      const data = Array.isArray(json.records) ? json.records : []
 
       if (Array.isArray(data)) {
         const now = Date.now()
         const mapped: Booking[] = data.map((b: any) => {
-          const rawStatusCode = statusMap[b.status_id] || b.status || 'pending'
+          const rawStatusCode = String(b.status || 'pending').toLowerCase()
           const details = b.booking_details || {}
 
           // Trip dates and times
@@ -263,15 +260,14 @@ export default function TripsPage() {
     if (!guestLookupRef.trim()) return
     setIsLookingUp(true)
     try {
-      const supabase = createClient()
       const ref = guestLookupRef.trim().toUpperCase()
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*, operator:assigned_operator_id(company_name, phone_number)')
-        .eq('booking_ref', ref)
-        .maybeSingle()
+      const res = await fetch(`/api/client-records?lookupRef=${encodeURIComponent(ref)}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      const json = await res.json().catch(() => ({ found: false }))
 
-      if (data) {
+      if (json?.found && json?.record) {
         // Save to recent refs in localStorage
         const savedRefsStr = localStorage.getItem('transhola_recent_booking_refs')
         const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : []

@@ -31,74 +31,44 @@ export default function QuotationsPage() {
   React.useEffect(() => {
     async function loadQuotes() {
       try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        let authUser: any = session?.user || (await supabase.auth.getUser()).data?.user
-        if (!authUser) {
-          try {
-            const meRes = await fetch('/api/auth/me', { credentials: 'include' })
-            if (meRes.ok) {
-              const meJson = await meRes.json()
-              if (meJson?.authenticated && meJson?.user) {
-                authUser = meJson.user
-              }
-            }
-          } catch {}
-        }
-        const currentUserId = authUser?.id
-
-        const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').maybeSingle()
-        
-        let query = supabase
-          .from("bookings")
-          .select("*")
-          .order("created_at", { ascending: false })
-
-        // Check for local storage recent quote refs (e.g. for guest or newly saved quotes)
         const savedRefsStr = typeof window !== 'undefined' ? localStorage.getItem('transhola_recent_quote_refs') : null
         const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : []
+        const refsQuery = savedRefs.length > 0 ? `&refs=${encodeURIComponent(savedRefs.join(','))}` : ''
 
-        if (currentUserId) {
-          const orgId = authUser?.user_metadata?.organization_id
-          const orgClause = orgId && orgId !== currentUserId ? `,user_id.eq.${orgId},customer_id.eq.${orgId}` : ''
-          if (savedRefs.length > 0) {
-            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}${orgClause},booking_ref.in.(${savedRefs.join(',')})`)
-          } else {
-            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}${orgClause}`)
-          }
-        } else if (savedRefs.length > 0) {
-          query = query.in('booking_ref', savedRefs)
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const headers: Record<string, string> = {}
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`
         }
 
-        if (statusData?.id) {
-          query = query.or(`status_id.eq.${statusData.id},status.eq.quotation,booking_ref.ilike.QTE-%,booking_ref.ilike.Q-%`)
-        } else {
-          query = query.or(`status.eq.quotation,booking_ref.ilike.QTE-%,booking_ref.ilike.Q-%`)
-        }
-        
-        const { data, error } = await query
+        const res = await fetch(`/api/client-records?mode=quotations${refsQuery}`, {
+          credentials: 'include',
+          headers,
+          cache: 'no-store',
+        })
+        const json = await res.json().catch(() => ({ records: [] }))
+        const data: any[] = Array.isArray(json.records) ? json.records : []
 
-        if (error) throw error
-
-        const mapped = (data || []).map((row) => {
+        const mapped = data.map((row) => {
           const details = row.booking_details || row.quotation_details || {}
           if (details.option && details.option.priceAED && !details.option.price) {
              details.option.price = details.option.priceAED;
           }
           // Inject actual DB row currency downward into the parsed rawDetails payload
-          details.currency = row.currency || "USD";
+          details.currency = row.currency || details.currency || "AED";
           
           const expiresAt = new Date(new Date(row.created_at).getTime() + 86400000);
           
           return {
             db_id: row.id,
-            id: row.booking_ref || row.ref || `Q-${row.id.substring(0, 8).toUpperCase()}`,
-            vehicle: details.option?.label || "Charter Vehicle",
-            from: typeof details.pickup === 'string' ? details.pickup : (details.pickup?.name || details.pickup?.address || row.pickup_location || "Unknown Pickup"),
-            to: typeof details.dropoff === 'string' ? details.dropoff : (details.dropoff?.name || details.dropoff?.address || row.dropoff_location || "Unknown Dropoff"),
-            price: row.price || 0,
+            id: row.booking_ref || details.ref || row.ref || `QTE-${row.id.substring(0, 6).toUpperCase()}`,
+            vehicle: details.option?.label || details.option?.title || row.vehicle_type || "Charter Vehicle",
+            from: typeof details.pickup === 'string' ? details.pickup : (details.pickup?.name || details.pickup?.address || row.pickup_location || row.pickup_address || "Unknown Pickup"),
+            to: typeof details.dropoff === 'string' ? details.dropoff : (details.dropoff?.name || details.dropoff?.address || row.dropoff_location || row.dropoff_address || "Unknown Dropoff"),
+            price: Number(row.price ?? row.total_price ?? details.option?.price ?? 0),
             currency: details.currency,
-            seats: details.passengers || details.option?.totalSeats || row.vehicle_count || 1,
+            seats: details.passengers || details.option?.totalSeats || row.passengers || row.vehicle_count || 1,
             eta: details.option?.eta || "N/A",
             isPremium: false,
             status: expiresAt.getTime() < Date.now() ? "expired" : "valid",
