@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import { resolveTripSchedule, formatTimeAmPm, formatDateHuman } from "@/lib/schedule-utils"
+import { PostPaymentLegalGate, type LegalGateBundle } from "./post-payment-legal-gate"
 import { OptimizationSolver, OptimizationResult } from "@/lib/rate-engine/optimization-solver"
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -1612,13 +1613,155 @@ function FooterPortal({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// ─── Payment State Machine ─────────────────────────────────────────────────────
-type PayState = "idle" | "loading" | "success" | "declined" | "error" | "timeout"
+// ─── Payment State Machine + Post-Payment Regional Legal Execution ────────────
+type PayState = "idle" | "loading" | "legal_review" | "finalizing" | "success" | "declined" | "error" | "timeout"
 const SAVED_CARDS: any[] = []
 
-function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
+async function executeFinalBookingWithLegalConsent(params: {
+  option: any
+  bookingDetails: any
+  currency: string
+  paymentIntentId?: string
+  savedCardId?: string
+  savePaymentMethod: boolean
+  isThirdParty?: boolean
+  thirdPartyInfo?: any
+  legalBundle: LegalGateBundle | null
+  acceptedDocs: LegalGateBundle["requiredDocs"]
+  paymentMethodLabel: string
+}) {
+  const { user: authUser, token } = await resolveActiveClientAuth()
+  if (!authUser) {
+    throw new Error("Authentication required. Please sign in to complete booking.")
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (token) headers["Authorization"] = `Bearer ${token}`
+  if (authUser.id) headers["x-user-id"] = authUser.id
+  if (authUser.email) headers["x-user-email"] = authUser.email
+
+  const bd = params.bookingDetails || {}
+  const countryCode = String(
+    params.legalBundle?.scope?.countryCode || bd.countryCode || bd.pickup?.countryCode || "AE"
+  ).toUpperCase()
+  const regionName = params.legalBundle?.scope?.regionName || ""
+  const acceptedAt = new Date().toISOString()
+
+  const legalAcceptanceMeta = {
+    status: "signed",
+    acceptedAt,
+    countryCode,
+    regionName,
+    jurisdictionLabel: params.legalBundle?.scope?.jurisdictionLabel || countryCode,
+    governingLawLabel: params.legalBundle?.scope?.governingLawLabel || `Laws of ${countryCode}`,
+    documents: params.acceptedDocs.map((d) => ({
+      id: d.id,
+      docNumber: d.docNumber,
+      name: d.name,
+      version: d.version,
+      sha256: d.contentSha256,
+    })),
+  }
+
+  const res = await fetch(`${BOOKING_API_URL}/checkout`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({
+      userId: authUser.id || undefined,
+      userEmail: authUser.email || undefined,
+      option: params.option,
+      pickup: bd.pickup,
+      dropoff: bd.dropoff,
+      stops: bd.stops,
+      routeLegs: bd.routeLegs,
+      startDate: bd.startDate || bd.date || bd.pickupDate,
+      startTime: bd.startTime || bd.time || bd.pickupTime,
+      endDate: bd.endDate,
+      endTime: bd.endTime,
+      estFinishDate: bd.estFinishDate || bd.ataDate,
+      estFinishTime: bd.estFinishTime || bd.ataTime,
+      passengers: bd.passengers,
+      tripType: bd.tripType,
+      multiDayStore: bd.multiDayStore,
+      currency: params.currency,
+      countryCode,
+      distance: bd.routeDistanceKm || bd.distance,
+      duration: bd.durationHours || bd.duration,
+      quotation_db_id: bd.quotation_db_id,
+      routePolyline: bd.routePolyline,
+      pickupWaitMin: bd.pickupWaitMin,
+      dropoffWaitMin: bd.dropoffWaitMin,
+      adaRequired: bd.adaRequired,
+      adaVehicleCount: bd.adaVehicleCount,
+      selectedAmenities: bd.selectedAmenities,
+      isThirdParty: Boolean(params.isThirdParty ?? bd.isThirdParty),
+      thirdPartyInfo: params.thirdPartyInfo || bd.thirdPartyInfo,
+      paymentIntentId: params.paymentIntentId,
+      savedCardId: params.savedCardId,
+      savePaymentMethod: params.savePaymentMethod,
+      legalAcceptance: legalAcceptanceMeta,
+    }),
+  })
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}))
+    throw new Error(errJson.detail || errJson.error || "Booking confirmation failed.")
+  }
+
+  const responseData = await res.json()
+  const confirmedBookingId = responseData?.data?.id
+  const confirmedBookingRef =
+    responseData?.data?.booking_ref || responseData?.data?.ref || confirmedBookingId
+
+  // Record cryptographic SHA-256 acceptance audit rows in PostgreSQL (non-blocking 2.2s bound)
+  if (params.acceptedDocs.length > 0) {
+    try {
+      await fetch("/api/legal-requirements", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          bookingId: confirmedBookingId,
+          bookingRef: confirmedBookingRef,
+          userId: authUser.id,
+          userEmail: authUser.email,
+          countryCode,
+          regionName,
+          paymentIntentId: params.paymentIntentId,
+          acceptedDocs: params.acceptedDocs,
+        }),
+      })
+    } catch (auditErr) {
+      console.warn("[Legal Acceptance Audit] Non-fatal log warning:", auditErr)
+    }
+  }
+
+  dispatchAirlineBookingEmailClient({
+    email: authUser?.email,
+    passengerName: authUser?.user_metadata?.full_name || authUser?.email?.split("@")[0],
+    passengerPhone:
+      authUser?.phone || params.thirdPartyInfo?.phone || bd?.thirdPartyInfo?.phone,
+    accountUserId: authUser?.id,
+    bookingRef: confirmedBookingRef,
+    option: params.option,
+    bookingDetails: bd,
+    currency: params.currency,
+    paymentMethod: params.paymentMethodLabel,
+    isThirdParty: Boolean(params.isThirdParty || bd?.isThirdParty),
+    thirdPartyInfo: params.thirdPartyInfo || bd?.thirdPartyInfo,
+  })
+
+  localStorage.removeItem("saved_itinerary")
+  return confirmedBookingId
+}
+
+function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, legalBundle, isLoadingLegal }: any) {
   const [payState, setPayState] = React.useState<PayState>("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
+  const [legalSubmitError, setLegalSubmitError] = React.useState<string | null>(null);
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
   const [isLoadingCards, setIsLoadingCards] = React.useState(true);
   const [selectedCard, setSelectedCard] = React.useState<string>('new');
@@ -1715,75 +1858,74 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
     }
 
     setTimeout(async () => {
-      try {
-        const { user: authUser, token } = await resolveActiveClientAuth();
-        if (!authUser) {
-          throw new Error("Authentication required. Please sign in to complete booking.");
-        }
-
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (authUser.id) headers["x-user-id"] = authUser.id;
-        if (authUser.email) headers["x-user-email"] = authUser.email;
-
-        const res = await fetch(`${BOOKING_API_URL}/checkout`, {
-          method: "POST",
-          credentials: "include",
-          headers,
-          body: JSON.stringify({
-            userId: authUser.id || undefined,
-            userEmail: authUser.email || undefined,
+      if (legalBundle && Array.isArray(legalBundle.requiredDocs) && legalBundle.requiredDocs.length === 0 && !isLoadingLegal) {
+        try {
+          const id = await executeFinalBookingWithLegalConsent({
             option,
-            pickup: bookingDetails?.pickup,
-            dropoff: bookingDetails?.dropoff,
-            startDate: bookingDetails?.startDate,
-            startTime: bookingDetails?.startTime,
-            passengers: bookingDetails?.passengers,
-            tripType: bookingDetails?.tripType,
-            multiDayStore: bookingDetails?.multiDayStore,
-            currency: currency,
-            distance: bookingDetails?.routeDistanceKm || bookingDetails?.distance,
-            duration: bookingDetails?.durationHours || bookingDetails?.duration,
-            quotation_db_id: bookingDetails?.quotation_db_id,
-            routePolyline: bookingDetails?.routePolyline,
-            pickupWaitMin: bookingDetails?.pickupWaitMin,
-            isThirdParty: bookingDetails?.isThirdParty,
-            thirdPartyInfo: bookingDetails?.thirdPartyInfo,
+            bookingDetails,
+            currency,
             paymentIntentId: "pi_mock_intent_success",
             savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
             savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
-          })
-        });
-
-        if (!res.ok) throw new Error("Checkout Gateway validation failed");
-
-        const responseData = await res.json();
-        dispatchAirlineBookingEmailClient({
-          email: authUser?.email,
-          passengerName: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0],
-          passengerPhone: authUser?.phone || bookingDetails?.thirdPartyInfo?.phone,
-          accountUserId: authUser?.id,
-          bookingRef: responseData?.data?.booking_ref || responseData?.data?.ref || responseData?.data?.id,
-          option,
-          bookingDetails,
-          currency,
-          paymentMethod: 'Card Checkout (Instant Authorization)',
-          isThirdParty: Boolean(isThirdParty || bookingDetails?.isThirdParty),
-          thirdPartyInfo: thirdPartyInfo || bookingDetails?.thirdPartyInfo,
-        });
-        localStorage.removeItem("saved_itinerary");
-        setPayState("success");
-        setTimeout(() => onConfirm(responseData?.data?.id), 1200);
-      } catch (err) {
-        console.error("[Gateway] Checkout Error:", err);
-        setPayState("error");
-        setErrorMessage("Payment succeeded but booking creation failed.");
-        setTimeout(() => setPayState("success"), 2000);
-        setTimeout(() => onConfirm(), 3200);
+            isThirdParty,
+            thirdPartyInfo,
+            legalBundle,
+            acceptedDocs: [],
+            paymentMethodLabel: 'Card Checkout (Instant Authorization)',
+          });
+          setPayState("success");
+          setTimeout(() => onConfirm(id), 800);
+        } catch (err: any) {
+          setPayState("error");
+          setErrorMessage(err?.message || "Payment succeeded but booking creation failed.");
+        }
+        return;
       }
-    }, 1500);
+      // Transition to Step 2: Regional Legal Agreements Gate after card payment confirmation
+      setLegalSubmitError(null);
+      setPayState("legal_review");
+    }, 650);
+  }
+
+  const handleConfirmMockLegal = async (acceptedDocs: LegalGateBundle["requiredDocs"]) => {
+    setPayState("finalizing");
+    setLegalSubmitError(null);
+    try {
+      const id = await executeFinalBookingWithLegalConsent({
+        option,
+        bookingDetails,
+        currency,
+        paymentIntentId: "pi_mock_intent_success",
+        savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
+        savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
+        isThirdParty,
+        thirdPartyInfo,
+        legalBundle,
+        acceptedDocs,
+        paymentMethodLabel: 'Card Checkout (Instant Authorization)',
+      });
+      setPayState("success");
+      setTimeout(() => onConfirm(id), 600);
+    } catch (err: any) {
+      setLegalSubmitError(err?.message || "Could not finalize booking. Please try again.");
+      setPayState("legal_review");
+    }
+  };
+
+  if (payState === "legal_review" || payState === "finalizing") {
+    return (
+      <PostPaymentLegalGate
+        legalBundle={legalBundle}
+        isLoadingBundle={isLoadingLegal}
+        currency={currency}
+        totalPrice={Number(option?.price || 0)}
+        vehicleLabel={option?.label || "Charter Fleet"}
+        isSubmitting={payState === "finalizing"}
+        submitError={legalSubmitError}
+        onCancel={onBack}
+        onConfirmAll={handleConfirmMockLegal}
+      />
+    );
   }
 
   if (payState === "loading") return (
@@ -2072,11 +2214,13 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
   )
 }
 
-function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType }: any) {
+function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo, intentType, legalBundle, isLoadingLegal }: any) {
   const stripe = useStripe();
   const elements = useElements();
   const [payState, setPayState] = React.useState<PayState>("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
+  const [legalSubmitError, setLegalSubmitError] = React.useState<string | null>(null);
+  const [confirmedPaymentIntentId, setConfirmedPaymentIntentId] = React.useState<string | undefined>(undefined);
   const [isReady, setIsReady] = React.useState(false);
   const [savedCards, setSavedCards] = React.useState<any[]>([]);
   const [isLoadingCards, setIsLoadingCards] = React.useState(true);
@@ -2174,72 +2318,78 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
       }
     }
 
-    try {
-      const { user: authUser, token } = await resolveActiveClientAuth();
-      if (!authUser) {
-        throw new Error("Authentication required. Please sign in to complete booking.");
-      }
+    setConfirmedPaymentIntentId(finalPaymentIntentId);
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      if (authUser.id) headers["x-user-id"] = authUser.id;
-      if (authUser.email) headers["x-user-email"] = authUser.email;
-
-      const res = await fetch(`${BOOKING_API_URL}/checkout`, {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          userId: authUser.id || undefined,
-          userEmail: authUser.email || undefined,
+    // If SuperAdmin configured 0 mandatory docs for this region, complete immediately
+    if (legalBundle && Array.isArray(legalBundle.requiredDocs) && legalBundle.requiredDocs.length === 0 && !isLoadingLegal) {
+      try {
+        const id = await executeFinalBookingWithLegalConsent({
           option,
-          pickup: bookingDetails?.pickup,
-          dropoff: bookingDetails?.dropoff,
-          startDate: bookingDetails?.startDate,
-          startTime: bookingDetails?.startTime,
-          passengers: bookingDetails?.passengers,
-          tripType: bookingDetails?.tripType,
-          multiDayStore: bookingDetails?.multiDayStore,
-          currency: currency,
-          distance: bookingDetails?.routeDistanceKm || bookingDetails?.distance,
-          duration: bookingDetails?.durationHours || bookingDetails?.duration,
-          quotation_db_id: bookingDetails?.quotation_db_id,
-          routePolyline: bookingDetails?.routePolyline,
-          pickupWaitMin: bookingDetails?.pickupWaitMin,
+          bookingDetails,
+          currency,
           paymentIntentId: finalPaymentIntentId,
           savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
           savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
-        })
-      });
+          isThirdParty,
+          thirdPartyInfo,
+          legalBundle,
+          acceptedDocs: [],
+          paymentMethodLabel: 'Encrypted Card Checkout',
+        });
+        setPayState("success");
+        setTimeout(() => onConfirm(id), 250);
+      } catch (err: any) {
+        setPayState("error");
+        setErrorMessage(err?.message || "Payment succeeded but booking creation failed.");
+      }
+      return;
+    }
 
-      if (!res.ok) throw new Error("Checkout Gateway validation failed");
+    // Transition immediately to Step 2: Regional Legal Agreements Gate
+    setLegalSubmitError(null);
+    setPayState("legal_review");
+  }
 
-      const responseData = await res.json();
-      dispatchAirlineBookingEmailClient({
-        email: authUser?.email,
-        passengerName: authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0],
-        passengerPhone: authUser?.phone || thirdPartyInfo?.phone || bookingDetails?.thirdPartyInfo?.phone,
-        accountUserId: authUser?.id,
-        bookingRef: responseData?.data?.booking_ref || responseData?.data?.ref || responseData?.data?.id,
+  const handleConfirmLegal = async (acceptedDocs: LegalGateBundle["requiredDocs"]) => {
+    setPayState("finalizing");
+    setLegalSubmitError(null);
+    try {
+      const id = await executeFinalBookingWithLegalConsent({
         option,
         bookingDetails,
         currency,
-        paymentMethod: 'Encrypted Card Checkout',
-        isThirdParty: Boolean(isThirdParty || bookingDetails?.isThirdParty),
-        thirdPartyInfo: thirdPartyInfo || bookingDetails?.thirdPartyInfo,
+        paymentIntentId: confirmedPaymentIntentId,
+        savedCardId: selectedCard !== 'new' ? selectedCard : undefined,
+        savePaymentMethod: selectedCard === 'new' ? saveNewCard : false,
+        isThirdParty,
+        thirdPartyInfo,
+        legalBundle,
+        acceptedDocs,
+        paymentMethodLabel: 'Encrypted Card Checkout',
       });
-      localStorage.removeItem("saved_itinerary");
       setPayState("success");
-      setTimeout(() => onConfirm(responseData?.data?.id), 200);
-    } catch (err) {
+      setTimeout(() => onConfirm(id), 250);
+    } catch (err: any) {
       console.error("[Gateway] Checkout Error:", err);
-      setPayState("error");
-      setErrorMessage("Payment succeeded but booking creation failed.");
-      setTimeout(() => setPayState("success"), 200);
-      setTimeout(() => onConfirm(), 200);
+      setLegalSubmitError(err?.message || "Could not finalize booking. Please try again.");
+      setPayState("legal_review");
     }
+  };
+
+  if (payState === "legal_review" || payState === "finalizing") {
+    return (
+      <PostPaymentLegalGate
+        legalBundle={legalBundle}
+        isLoadingBundle={isLoadingLegal}
+        currency={currency}
+        totalPrice={Number(option?.price || 0)}
+        vehicleLabel={option?.label || "Charter Fleet"}
+        isSubmitting={payState === "finalizing"}
+        submitError={legalSubmitError}
+        onCancel={onBack}
+        onConfirmAll={handleConfirmLegal}
+      />
+    );
   }
 
   if (payState === "success") return (
@@ -2520,12 +2670,82 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
 export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack, onConfirm, isThirdParty, setIsThirdParty, thirdPartyInfo, setThirdPartyInfo }: { option: VehicleOption; bookingDetails?: any; currency?: string; onBack: () => void; onConfirm: (id?: string) => void; isThirdParty?: boolean; setIsThirdParty?: any; thirdPartyInfo?: any; setThirdPartyInfo?: any; }) {
   const [clientSecret, setClientSecret] = React.useState("");
   const [intentType, setIntentType] = React.useState("payment");
+  const [legalBundle, setLegalBundle] = React.useState<LegalGateBundle | null>(null);
+  const [isLoadingLegal, setIsLoadingLegal] = React.useState<boolean>(true);
   const initializedKeyRef = React.useRef<string>("");
 
   const optionId = option?.id || option?.label || "default";
   const optionPrice = Number(option?.price || 0);
   const quoteDbId = String(bookingDetails?.quotation_db_id || "");
   const resolvedCountry = String(bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode || "AE").toUpperCase();
+  const pickupAddressStr = typeof bookingDetails?.pickup === "string"
+    ? bookingDetails.pickup
+    : String(bookingDetails?.pickup?.address || bookingDetails?.pickup?.name || "");
+  const pickupLat = bookingDetails?.pickup?.coordinate?.lat ?? bookingDetails?.pickup?.lat ?? "";
+  const pickupLon = bookingDetails?.pickup?.coordinate?.lon ?? bookingDetails?.pickup?.lng ?? "";
+  const dropoffCountry = String(bookingDetails?.dropoff?.countryCode || resolvedCountry).toUpperCase();
+  const tripTypeStr = String(bookingDetails?.tripType || "one-way");
+  const paxCount = Math.max(1, Number(bookingDetails?.passengers || option?.totalSeats || 1));
+  const vehicleUnits = Array.isArray(option?.vehicles) && option.vehicles.length > 0
+    ? option.vehicles.reduce((s: number, v: any) => s + Math.max(1, Number(v.count || 1)), 0)
+    : 1;
+  const adaFlag = Boolean(bookingDetails?.adaRequired);
+  const thirdPartyFlag = Boolean(isThirdParty ?? bookingDetails?.isThirdParty);
+  const amenitiesParam = Array.isArray(bookingDetails?.selectedAmenities)
+    ? bookingDetails.selectedAmenities.join("|")
+    : "";
+
+  // Pre-fetch dynamic SuperAdmin regional legal agreements in parallel while client enters/selects card (0ms wait after payment!)
+  React.useEffect(() => {
+    let cancelled = false;
+    async function loadRegionalLegalRequirements() {
+      setIsLoadingLegal(true);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2800);
+      try {
+        const { token } = await resolveActiveClientAuth();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const qs = new URLSearchParams({
+          countryCode: resolvedCountry,
+          dropoffCountryCode: dropoffCountry,
+          pickupAddress: pickupAddressStr.slice(0, 180),
+          pickupLat: String(pickupLat ?? ""),
+          pickupLon: String(pickupLon ?? ""),
+          tripType: tripTypeStr,
+          passengers: String(paxCount),
+          vehicleCount: String(vehicleUnits),
+          adaRequired: String(adaFlag),
+          isThirdParty: String(thirdPartyFlag),
+          amenities: amenitiesParam,
+          currency: String(currency || "AED"),
+          totalPrice: String(optionPrice),
+          bookingRef: String(bookingDetails?.ref || bookingDetails?.quotation_ref || quoteDbId || ""),
+        });
+
+        const res = await fetch(`/api/legal-requirements?${qs.toString()}`, {
+          credentials: "include",
+          headers,
+          signal: ctrl.signal,
+          cache: "no-store",
+        });
+        if (!cancelled && res.ok) {
+          const json = await res.json();
+          setLegalBundle(json);
+        }
+      } catch (err) {
+        console.warn("[Regional Legal Engine] Pre-fetch notice:", err);
+      } finally {
+        clearTimeout(timer);
+        if (!cancelled) setIsLoadingLegal(false);
+      }
+    }
+    loadRegionalLegalRequirements();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedCountry, dropoffCountry, pickupAddressStr, pickupLat, pickupLon, tripTypeStr, paxCount, vehicleUnits, adaFlag, thirdPartyFlag, amenitiesParam, currency, optionPrice, quoteDbId]);
 
   React.useEffect(() => {
     const intentKey = `${optionId}|${optionPrice}|${currency}|${quoteDbId}|${resolvedCountry}`;
@@ -2608,12 +2828,12 @@ export function PaymentPanel({ option, bookingDetails, currency = "EUR", onBack,
   }
 
   if (clientSecret.includes('mock')) {
-    return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} />
+    return <MockCheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} legalBundle={legalBundle} isLoadingLegal={isLoadingLegal} />
   }
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} intentType={intentType} />
+      <CheckoutForm option={option} bookingDetails={bookingDetails} currency={currency} onBack={onBack} onConfirm={onConfirm} isThirdParty={isThirdParty} setIsThirdParty={setIsThirdParty} thirdPartyInfo={thirdPartyInfo} setThirdPartyInfo={setThirdPartyInfo} intentType={intentType} legalBundle={legalBundle} isLoadingLegal={isLoadingLegal} />
     </Elements>
   );
 }

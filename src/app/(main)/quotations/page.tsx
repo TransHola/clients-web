@@ -240,7 +240,7 @@ export default function QuotationsPage() {
              >
                <div
                  onClick={(e) => e.stopPropagation()}
-                 className="bg-white rounded-2xl shadow-2xl w-full max-w-[440px] h-full max-h-[660px] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+                 className="bg-white rounded-2xl shadow-2xl w-full max-w-[540px] h-full max-h-[82vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
                >
                  <PaymentPanel 
                    option={details.option} 

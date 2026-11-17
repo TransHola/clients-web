@@ -614,6 +614,9 @@ export default function BookingDetailsProfile() {
          } else {
             setBookingStatus(data.status || 'confirmed');
          }
+         if (details?.legalAcceptance?.status === 'signed') {
+            setContractStatus('signed');
+         }
 
          const { data: logsData, error: logsError } = await supabase
             .from('audit_logs')
