@@ -4067,6 +4067,9 @@ export function BookingPanel({
               pickupWaitMin,
               dropoffWaitMin,
               tripType,
+              roundTripMode,
+              serviceMode,
+              routeLegs,
               shuttleVehicleOvertimes,
               shuttleVehicleEndings,
               countryCode: (pickupLoc?.countryCode || clientGeoContext.countryCode || "US").toUpperCase(),
@@ -4079,14 +4082,32 @@ export function BookingPanel({
               distance: routeDistance ? Math.round(clientGeoContext.distanceUnit === 'mi' ? routeDistance * 0.000621371 : routeDistance / 1000) : 40,
               duration: routeDuration || 3600,
               effectiveTotalHours: (() => {
+                const parseClockToMins = (tStr?: string): number | null => {
+                  if (!tStr) return null;
+                  const s = String(tStr).trim().toUpperCase();
+                  const ampm = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/);
+                  if (ampm) {
+                    let h = parseInt(ampm[1], 10);
+                    const m = parseInt(ampm[2], 10);
+                    if (ampm[3] === 'PM' && h < 12) h += 12;
+                    if (ampm[3] === 'AM' && h === 12) h = 0;
+                    return h * 60 + m;
+                  }
+                  const h24 = s.match(/^(\d{1,2}):(\d{2})/);
+                  if (h24) return parseInt(h24[1], 10) * 60 + parseInt(h24[2], 10);
+                  return null;
+                };
                 const driveSec = (routeDuration || 3600) * (tripType === 'roundtrip' && !(roundTripMode === 'continuous' && routeLegs && routeLegs.length > 1) ? 2 : 1);
                 const waitsSec = ((pickupWaitMin || 0) + (dropoffWaitMin || 0) + stops.reduce((sum, s) => sum + (s.stopDurationMin || 0), 0)) * 60;
                 let windowSec = 0;
                 if (startTime && endTime && (tripType === 'roundtrip' || tripType === 'shuttle' || tripType === 'multi-day')) {
-                  const [sh, sm] = startTime.split(':').map(Number);
-                  const [eh, em] = endTime.split(':').map(Number);
-                  const diffM = ((eh || 0) * 60 + (em || 0)) - ((sh || 0) * 60 + (sm || 0));
-                  if (diffM > 0) windowSec = diffM * 60;
+                  const sMins = parseClockToMins(startTime);
+                  const eMins = parseClockToMins(endTime);
+                  if (sMins !== null && eMins !== null) {
+                    let diffM = eMins - sMins;
+                    if (diffM <= 0) diffM += 24 * 60;
+                    windowSec = diffM * 60;
+                  }
                 }
                 return Math.max(driveSec + waitsSec, windowSec) / 3600;
               })(),

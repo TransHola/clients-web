@@ -16,6 +16,15 @@ function getInternalBookingEngineUrl(): string {
   return isProd ? 'http://booking-engine:8000' : 'http://127.0.0.1:8000'
 }
 
+function getInternalRateEngineUrl(): string {
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.KUBERNETES_SERVICE_HOST
+  const configured = process.env.RATE_ENGINE_INTERNAL_URL || ''
+  if (configured && !(isProd && (configured.includes('localhost') || configured.includes('127.0.0.1')))) {
+    return configured.replace(/\/+$/, '')
+  }
+  return isProd ? 'http://rate-engine:4035' : 'http://127.0.0.1:4035'
+}
+
 function withCors(res: NextResponse, origin?: string | null) {
   const allowed =
     origin &&
@@ -248,6 +257,37 @@ async function handleProxy(
   const resolvedEmail = request.headers.get('x-user-email') || verifiedUser?.email
   if (resolvedUid) upstreamHeaders['x-user-id'] = resolvedUid
   if (resolvedEmail) upstreamHeaders['x-user-email'] = resolvedEmail
+
+  // Fast-path: route /calculate, /rates, and /invalidate directly to Go 1.24 SuperAdmin Rate Engine (<0.2ms)
+  if (subpath === 'calculate' || subpath === 'rates' || subpath === 'invalidate') {
+    const rateCtrl = new AbortController()
+    const rateTimer = setTimeout(() => rateCtrl.abort(), 2200)
+    try {
+      const rateRes = await fetch(`${getInternalRateEngineUrl()}/${subpath}${search}`, {
+        method,
+        headers: upstreamHeaders,
+        body: forwardBody,
+        signal: rateCtrl.signal,
+        cache: 'no-store',
+      })
+      clearTimeout(rateTimer)
+      if (rateRes.ok) {
+        const rateText = await rateRes.text()
+        return withCors(
+          new NextResponse(rateText, {
+            status: rateRes.status,
+            headers: {
+              'Content-Type': rateRes.headers.get('content-type') || 'application/json',
+              'X-Rate-Engine': 'go-1.24-superadmin',
+            },
+          }),
+          origin
+        )
+      }
+    } catch {
+      clearTimeout(rateTimer)
+    }
+  }
 
   const targetUrl = `${getInternalBookingEngineUrl()}/${subpath}${search}`
   const timeoutMs = subpath === 'checkout' || subpath === 'create-payment-intent' ? 2950 : 2800

@@ -390,6 +390,29 @@ function enrichOptionWithRateBreakdown(opt: any, ctx: {
     totalSeatSum += count * seats
     weightedCo2 += (count * seats) * meta.co2PerPaxKm
 
+    // Authoritative SuperAdmin Go Rate Engine path: preserve 100% of real lineItems, debugLog, and prices!
+    if (Array.isArray(v.lineItems) && v.lineItems.length > 0) {
+      const exactGross = Number(v.price ?? totalGross)
+      const exactTax = Number(v.taxAmount ?? 0)
+      const exactNet = v.netSubtotal !== undefined ? Number(v.netSubtotal) : +(exactGross - exactTax).toFixed(2)
+      return {
+        ...v,
+        count,
+        seats,
+        bagsPerUnit: v.bagsPerUnit || meta.bagsPerUnit,
+        totalBags: count * (v.bagsPerUnit || meta.bagsPerUnit),
+        imageUrl: v.imageUrl || resolveFleetImageUrl(v.iconName || v.type, seats),
+        amenities: v.amenities || meta.amenities,
+        price: exactGross,
+        unitPrice: v.unitPrice !== undefined ? Number(v.unitPrice) : +(exactGross / count).toFixed(2),
+        unitNetPrice: v.unitNetPrice !== undefined ? Number(v.unitNetPrice) : +(exactNet / count).toFixed(2),
+        netSubtotal: exactNet,
+        taxRatePct: v.taxRatePct !== undefined ? Number(v.taxRatePct) : taxRatePct,
+        taxLabel: v.taxLabel || opt.taxLabel || 'Transport VAT / Tax',
+        taxAmount: exactTax,
+      }
+    }
+
     const share = weights[idx] / weightSum
     const vehicleGrossTotal = v.price !== undefined
       ? Number(v.price)
@@ -552,20 +575,26 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           userId: session?.user?.id || null,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
+          stops: bookingDetails?.stops,
           tripType,
           roundTripMode: bookingDetails?.roundTripMode,
+          serviceMode: bookingDetails?.serviceMode || 'scheduled',
           routeLegs: bookingDetails?.routeLegs,
           returnLoc: bookingDetails?.returnLoc,
           startDate: bookingDetails?.startDate,
           startTime: bookingDetails?.startTime,
           endDate: bookingDetails?.endDate,
           endTime: bookingDetails?.endTime,
-          countryCode: bookingDetails?.countryCode || 'US',
+          pickupWaitMin: bookingDetails?.pickupWaitMin,
+          dropoffWaitMin: bookingDetails?.dropoffWaitMin,
+          countryCode: bookingDetails?.countryCode || 'AE',
           passengers,
           routeDistanceKm,
           returnDistanceKm: bookingDetails?.returnDistanceKm,
           returnDurationHours: bookingDetails?.returnDurationHours,
           durationHours: bookingDetails?.duration ? bookingDetails.duration / 3600 : undefined,
+          effectiveTotalHours: bookingDetails?.effectiveTotalHours,
+          duration: bookingDetails?.duration,
           multiDayStore: bookingDetails?.multiDayStore
         };
 
@@ -1068,8 +1097,13 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
     const badgeBg = isGreenBadge ? '#dcfce7' : '#dbeafe'
     const badgeColor = isGreenBadge ? '#15803d' : '#1d4ed8'
 
-    const formattedPrice = Number(opt.price || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
-    const displayCurr = (currencySymbol || currency || 'AED').trim()
+    const pNum = Number(opt.price || 0)
+    const hasCents = Math.abs(pNum - Math.round(pNum)) > 0.005
+    const formattedPrice = pNum.toLocaleString('en-US', {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: 2,
+    })
+    const displayCurr = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : (currency || 'AED').trim()
 
     return (
       <button
@@ -1480,7 +1514,7 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                   setStep("payment");
                 }
               }} style={{ width: '100%', height: '50px', borderRadius: '14px', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currencySymbol || currency} {selected.price}
+                <CreditCard style={{ width: '16px', height: '16px' }} /> Book Now — {currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : `${currency} `}{Number(selected.price || 0).toLocaleString('en-US', { minimumFractionDigits: Math.abs(Number(selected.price || 0) - Math.round(Number(selected.price || 0))) > 0.005 ? 2 : 0, maximumFractionDigits: 2 })}
               </button>
             )}
             {quoteSaveError && (

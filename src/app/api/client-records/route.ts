@@ -163,3 +163,4 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: err?.message || 'Failed to update booking' }, { status: 500 })
   }
 }
+
