@@ -31,6 +31,7 @@ import {
   resolveEffectivePortalAccess,
   type PortalPermissionId,
 } from "@/lib/corporate-rbac"
+import { ClientNotificationsBell } from "@/components/layout/client-notifications-bell"
 
 function decodeJwtPayloadBrowser(token: string): any | null {
   try {
@@ -297,22 +298,7 @@ export function ClientHeader() {
         <div className="flex items-center gap-2.5">
           {user ? (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-foreground relative rounded-xl"
-                onClick={() =>
-                  router.push(
-                    effectiveAccess.permissions.includes("portal.bookings.manage")
-                      ? "/bookings"
-                      : "/profile"
-                  )
-                }
-                title="Booking & Dispatch Notifications"
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950"></span>
-              </Button>
+              <ClientNotificationsBell />
 
               <div className="h-6 w-px bg-border mx-0.5 hidden sm:block"></div>
 
@@ -373,6 +359,9 @@ export function ClientHeader() {
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/notifications")}>
+                      <Bell className="w-4 h-4 text-blue-600" /> Notification Center
+                    </DropdownMenuItem>
                     <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/profile")}>
                       {effectiveAccess.isCorporate ? (
                         <Building2 className="w-4 h-4 text-muted-foreground" />

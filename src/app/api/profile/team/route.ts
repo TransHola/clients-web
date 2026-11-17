@@ -221,6 +221,32 @@ export async function POST(request: NextRequest) {
       .eq('id', created.id)
       .maybeSingle()
 
+    await (ctx.adminClient as any)
+      .from('client_notifications')
+      .insert([
+        {
+          user_id: orgId,
+          organization_id: orgId,
+          category: 'team',
+          severity: 'success',
+          title: `Portal User Provisioned: ${firstName} ${lastName}`,
+          message: `${email} joined ${companyName} with the ${CORPORATE_ROLE_PRESETS[corporateRole].label} role.`,
+          action_url: '/profile?tab=team',
+          action_label: 'View Team',
+        },
+        {
+          user_id: created.id,
+          organization_id: null,
+          category: 'system',
+          severity: 'info',
+          title: `Assigned Role: ${CORPORATE_ROLE_PRESETS[corporateRole].label}`,
+          message: `You have been provisioned under ${companyName} with ${permissions.length} active portal capabilities.`,
+          action_url: '/profile',
+          action_label: 'My Permissions',
+        },
+      ])
+      .catch(() => {})
+
     return NextResponse.json({
       success: true,
       member: newRow ? mapTeamMemberRow(newRow, orgId) : created,
@@ -344,6 +370,26 @@ export async function PATCH(request: NextRequest) {
       },
     })
 
+    await (ctx.adminClient as any)
+      .from('client_notifications')
+      .insert({
+        user_id: memberId,
+        organization_id: null,
+        category: 'security',
+        severity: nextStatus === 'Suspended' ? 'warning' : 'info',
+        title:
+          nextStatus === 'Suspended'
+            ? 'Portal Seat Suspended'
+            : `Access Policy Updated (${CORPORATE_ROLE_PRESETS[nextRole].label})`,
+        message:
+          nextStatus === 'Suspended'
+            ? 'Your corporate administrator has temporarily suspended portal access.'
+            : `Your portal role is now ${CORPORATE_ROLE_PRESETS[nextRole].label} (${nextPermissions.length} active modules).`,
+        action_url: '/profile',
+        action_label: 'View Access',
+      })
+      .catch(() => {})
+
     return NextResponse.json({
       success: true,
       member: mapTeamMemberRow(updatedRow, orgId),
@@ -395,3 +441,4 @@ export async function DELETE(request: NextRequest) {
     message: 'Portal user removed from your corporate organization.',
   })
 }
+

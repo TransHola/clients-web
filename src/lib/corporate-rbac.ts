@@ -319,3 +319,4 @@ export function checkRoutePermission(
 
   return { allowed: true, fallbackHref: '/' }
 }
+
