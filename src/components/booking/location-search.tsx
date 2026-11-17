@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { GisClient } from "@/lib/gis-client"
-import { MapPin, Loader2, LocateFixed, Clock, Briefcase, Navigation } from "lucide-react"
+import { GisClient, CrossCountrySuggestion } from "@/lib/gis-client"
+import { MapPin, Loader2, LocateFixed, Clock, Briefcase, Navigation, Globe } from "lucide-react"
 
 export interface LocationResult {
   address: string
@@ -118,6 +118,8 @@ export function LocationSearchInput({
 }) {
   const [query, setQuery] = React.useState(controlledValue || "")
   const [gisResults, setGisResults] = React.useState<LocationResult[]>([])
+  const [crossCountrySuggestion, setCrossCountrySuggestion] = React.useState<CrossCountrySuggestion | null>(null)
+  const [overrideBias, setOverrideBias] = React.useState<{ lat: number; lon: number; countryCode?: string; city?: string } | null>(null)
   const [recentResults, setRecentResults] = React.useState<LocationResult[]>([])
   const [popularCitySuggestions, setPopularCitySuggestions] = React.useState<LocationResult[]>([])
   const [isOpen, setIsOpen] = React.useState(false)
@@ -128,8 +130,13 @@ export function LocationSearchInput({
   const searchSeqRef = React.useRef(0)
   const mounted = React.useRef(false)
 
-  const activeCountryCode = ((bias?.countryCode || "AE").toUpperCase() === "UK" ? "GB" : (bias?.countryCode || "AE").toUpperCase())
-  const activeCityName = (bias?.city || "").split(",")[0]?.trim() || ""
+  React.useEffect(() => {
+    setOverrideBias(null)
+  }, [bias?.countryCode, bias?.city])
+
+  const effectiveBias = overrideBias || bias || null
+  const activeCountryCode = ((effectiveBias?.countryCode || "AE").toUpperCase() === "UK" ? "GB" : (effectiveBias?.countryCode || "AE").toUpperCase())
+  const activeCityName = (effectiveBias?.city || "").split(",")[0]?.trim() || ""
 
   const getScopedRecents = React.useCallback((filterQuery?: string) => {
     const all = getRecentLocations().filter((r) => {
@@ -241,15 +248,17 @@ export function LocationSearchInput({
     if (!trimmed) {
       searchSeqRef.current += 1
       setGisResults([])
+      setCrossCountrySuggestion(null)
       setIsLoading(false)
       setRecentResults(getScopedRecents())
       return
     }
 
-    // 0ms Instant Verified Landmark Matches while live ensemble resolves
-    const instant = GisClient.getInstantLandmarkMatches(trimmed, bias || undefined)
+    // 0ms Instant Verified Landmark Matches while live AI/ML engine resolves
+    const instant = GisClient.getInstantLandmarkMatches(trimmed, effectiveBias || undefined)
     if (instant.length > 0) {
       setGisResults(instant.slice(0, 8))
+      setCrossCountrySuggestion(null)
       setIsOpen(true)
     }
 
@@ -257,13 +266,15 @@ export function LocationSearchInput({
     const timeout = setTimeout(async () => {
       setIsLoading(true)
       try {
-        const res = await GisClient.geocode(trimmed, bias || undefined)
+        const smartResp = await GisClient.smartSearch(trimmed, effectiveBias || undefined)
         if (mySeq !== searchSeqRef.current || hasSelectedRef.current) return
-        setGisResults(res.slice(0, 8))
+        setGisResults((smartResp.results || []).slice(0, 8))
+        setCrossCountrySuggestion(smartResp.crossCountrySuggestion || null)
         setIsOpen(true)
       } catch {
         if (mySeq === searchSeqRef.current && instant.length === 0) {
           setGisResults([])
+          setCrossCountrySuggestion(null)
         }
       } finally {
         if (mySeq === searchSeqRef.current) {
@@ -273,15 +284,35 @@ export function LocationSearchInput({
       if (mySeq === searchSeqRef.current) {
         setRecentResults(getScopedRecents(trimmed))
       }
-    }, 120)
+    }, 95)
     return () => clearTimeout(timeout)
-  }, [query, activeCountryCode, activeCityName, bias?.lat, bias?.lon, getScopedRecents])
+  }, [query, activeCountryCode, activeCityName, effectiveBias?.lat, effectiveBias?.lon, getScopedRecents])
+
+  const handleConfirmSwitchCountry = (suggestion: CrossCountrySuggestion) => {
+    const newBias = {
+      lat: suggestion.lat,
+      lon: suggestion.lon,
+      countryCode: suggestion.countryCode,
+      city: suggestion.city,
+    }
+    setOverrideBias(newBias)
+    setCrossCountrySuggestion(null)
+    if (Array.isArray(suggestion.previewResults) && suggestion.previewResults.length > 0) {
+      setGisResults(suggestion.previewResults.slice(0, 8))
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("transhola:switch-country", { detail: suggestion }))
+    }
+    setIsOpen(true)
+  }
 
   const handleSelect = (loc: LocationResult) => {
     hasSelectedRef.current = true  // ← block dropdown from reopening on re-focus or query change
     const enrichedLoc = { ...loc, countryCode: loc.countryCode || activeCountryCode }
+    GisClient.recordFeedback({ query, loc: enrichedLoc, city: activeCityName })
     setQuery(enrichedLoc.address)
     setSelectedDisplay(enrichedLoc)
+    setCrossCountrySuggestion(null)
     setIsOpen(false)
     saveRecentLocation(enrichedLoc)
     lastEmittedAddress.current = enrichedLoc.address
@@ -289,7 +320,7 @@ export function LocationSearchInput({
   }
 
   const showStatic = (!query || query.length === 0) && popularCitySuggestions.length > 0
-  const hasResults = gisResults.length > 0 || recentResults.length > 0 || showStatic
+  const hasResults = gisResults.length > 0 || recentResults.length > 0 || showStatic || Boolean(crossCountrySuggestion)
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
@@ -383,11 +414,67 @@ export function LocationSearchInput({
           {/* GIS live results first */}
           {gisResults.length > 0 && (
             <>
-              <div style={{ padding: '6px 10px 4px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
-                Search Results
+              <div style={{ padding: '6px 10px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
+                <span>Search Results · {activeCityName ? `${activeCityName}, ${activeCountryCode}` : activeCountryCode}</span>
+                <span style={{ color: '#2563eb', fontWeight: 700, fontSize: '9px' }}>AI Ranked</span>
               </div>
               {gisResults.map((r, i) => <ResultRow key={`gis-${i}`} loc={r} onSelect={handleSelect} icon={r.icon || "map"} />)}
             </>
+          )}
+
+          {/* Smart AI Cross-Country Expansion Prompt */}
+          {crossCountrySuggestion && (
+            <div style={{
+              margin: gisResults.length > 0 ? '8px 4px 4px' : '4px',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
+              border: '1.5px solid #bfdbfe',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '10px',
+                  background: '#dbeafe', color: '#1d4ed8',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <Globe style={{ width: '16px', height: '16px' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                    Searching in {crossCountrySuggestion.countryName} ({crossCountrySuggestion.countryCode})?
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#475569', lineHeight: 1.4 }}>
+                    We found matching locations in <strong>{crossCountrySuggestion.city}, {crossCountrySuggestion.countryName}</strong>, outside your active operating country (<strong>{activeCountryCode}</strong>). Would you like to switch countries to expand results?
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '4px' }}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); setCrossCountrySuggestion(null) }}
+                  style={{
+                    padding: '7px 12px', borderRadius: '9px', border: '1px solid #cbd5e1',
+                    background: 'white', color: '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Stay in {activeCountryCode}
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); handleConfirmSwitchCountry(crossCountrySuggestion) }}
+                  style={{
+                    padding: '7px 14px', borderRadius: '9px', border: 'none',
+                    background: '#2563eb', color: 'white', fontSize: '11px', fontWeight: 800,
+                    cursor: 'pointer', boxShadow: '0 2px 8px rgba(37,99,235,0.25)'
+                  }}
+                >
+                  Switch to {crossCountrySuggestion.countryName} ({crossCountrySuggestion.countryCode}) →
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Recent locations section */}
@@ -422,9 +509,9 @@ export function LocationSearchInput({
             </>
           )}
 
-          {gisResults.length === 0 && !isLoading && query.length > 0 && recentResults.length === 0 && (
+          {gisResults.length === 0 && !crossCountrySuggestion && !isLoading && query.length > 0 && recentResults.length === 0 && (
             <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>
-              No locations found
+              No locations found in {activeCountryCode}
             </div>
           )}
         </div>

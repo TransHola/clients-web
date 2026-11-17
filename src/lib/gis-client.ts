@@ -17,6 +17,36 @@ export interface GisBiasContext {
     city?: string;
 }
 
+export interface CrossCountrySuggestion {
+    countryCode: string;
+    countryName: string;
+    city: string;
+    lat: number;
+    lon: number;
+    confidence: number;
+    reason: string;
+    previewResults: GisLocation[];
+}
+
+export interface SmartSearchResponse {
+    activeCountry: string;
+    activeCountryName?: string;
+    query: string;
+    latencyMs?: number;
+    results: GisLocation[];
+    crossCountrySuggestion?: CrossCountrySuggestion | null;
+}
+
+export interface EdgeGeoContext {
+    countryCode: string;
+    country: string;
+    city: string;
+    lat: number;
+    lon: number;
+    currency?: string;
+    distanceUnit?: 'km' | 'mi';
+}
+
 const ISO3_TO_ISO2: Record<string, string> = {
     ARE: 'AE', USA: 'US', ESP: 'ES', MAR: 'MA', GBR: 'GB', FRA: 'FR', DEU: 'DE', ITA: 'IT',
     CHE: 'CH', NLD: 'NL', BEL: 'BE', AUT: 'AT', PRT: 'PT', TUR: 'TR', SAU: 'SA', QAT: 'QA',
@@ -231,9 +261,198 @@ interface RawCandidate extends GisLocation {
 }
 
 const GEOCODE_MEM_CACHE = new Map<string, GisLocation[]>();
+const SMART_SEARCH_CACHE = new Map<string, SmartSearchResponse>();
 
 export class GisClient {
     private static baseUrl = process.env.NEXT_PUBLIC_GIS_API_URL ? `${process.env.NEXT_PUBLIC_GIS_API_URL}/api/v1/gis` : 'http://localhost:4000/api/v1/gis';
+
+    /**
+     * Zero-Cost Edge Geo-Context Detector (Cloudflare Edge Headers + Go ML Geo-Engine)
+     */
+    static async detectEdgeContext(): Promise<EdgeGeoContext | null> {
+        if (typeof window === 'undefined') return null;
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 1800);
+        try {
+            const res = await fetch('/api/gis/context', { signal: ctrl.signal, cache: 'no-store' });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data && data.countryCode) {
+                return {
+                    countryCode: String(data.countryCode).toUpperCase(),
+                    country: data.country || ISO2_COUNTRY_NAMES[String(data.countryCode).toUpperCase()] || data.countryCode,
+                    city: data.city || 'Dubai',
+                    lat: Number(data.lat || 25.2048),
+                    lon: Number(data.lon || 55.2708),
+                    currency: data.currency,
+                    distanceUnit: data.distanceUnit === 'mi' ? 'mi' : 'km',
+                };
+            }
+        } catch {
+            // Silent fallback
+        } finally {
+            clearTimeout(tid);
+        }
+        return null;
+    }
+
+    /**
+     * Non-blocking Online Bayesian Learning-to-Rank (LTR) Selection Feedback
+     */
+    static recordFeedback(params: {
+        query: string;
+        loc: GisLocation | { name?: string; address: string; coordinate?: { lat: number; lon: number }; countryCode?: string };
+        city?: string;
+    }): void {
+        if (typeof window === 'undefined') return;
+        try {
+            const lat = (params.loc as any).lat ?? params.loc.coordinate?.lat ?? 0;
+            const lon = (params.loc as any).lon ?? params.loc.coordinate?.lon ?? 0;
+            const payload = JSON.stringify({
+                query: params.query || '',
+                name: params.loc.name || params.loc.address.split(',')[0],
+                address: params.loc.address,
+                countryCode: params.loc.countryCode || '',
+                city: params.city || '',
+                lat,
+                lon,
+            });
+            if (navigator.sendBeacon) {
+                const blob = new Blob([payload], { type: 'application/json' });
+                navigator.sendBeacon('/api/gis/feedback', blob);
+            } else {
+                fetch('/api/gis/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload,
+                    keepalive: true,
+                }).catch(() => {});
+            }
+        } catch {}
+    }
+
+    /**
+     * Local fallback Cross-Country Intent Detector when Go ML Engine is offline in local dev
+     */
+    static detectLocalCrossCountrySuggestion(query: string, activeCountry?: string): CrossCountrySuggestion | null {
+        const activeCc = normalizeIso2(activeCountry);
+        if (!activeCc) return null;
+        const repaired = repairCommonQueryTypos(query.trim());
+        const nq = normalizeSearchText(repaired);
+        if (nq.length < 3) return null;
+        const tokens = nq.split(' ').filter(t => t.length >= 2 && !STOPWORDS.has(t));
+        if (tokens.length === 0) return null;
+
+        const foreignByCountry = new Map<string, GazetteerLandmark[]>();
+        for (const lm of VERIFIED_LANDMARKS) {
+            if (lm.countryCode === activeCc) continue;
+            const hay = normalizeSearchText([lm.name, lm.city, lm.countryCode, ISO2_COUNTRY_NAMES[lm.countryCode] || '', ...(lm.aliases || [])].join(' '));
+            const hayWords = hay.split(' ');
+            if (tokens.every(t => tokenMatchesText(t, hayWords, hay))) {
+                const list = foreignByCountry.get(lm.countryCode) || [];
+                list.push(lm);
+                foreignByCountry.set(lm.countryCode, list);
+            }
+        }
+        if (foreignByCountry.size === 0) return null;
+
+        let bestCc = '';
+        let bestList: GazetteerLandmark[] = [];
+        for (const [cc, list] of foreignByCountry.entries()) {
+            if (list.length > bestList.length) {
+                bestCc = cc;
+                bestList = list;
+            }
+        }
+        const top = bestList[0];
+        const countryName = ISO2_COUNTRY_NAMES[bestCc] || bestCc;
+        return {
+            countryCode: bestCc,
+            countryName,
+            city: top.city,
+            lat: top.lat,
+            lon: top.lon,
+            confidence: 0.94,
+            reason: `Found matching destinations in ${top.city}, ${countryName}`,
+            previewResults: bestList.slice(0, 5).map(lm => ({
+                name: lm.name,
+                address: lm.address,
+                displayName: lm.address,
+                coordinate: { lat: lm.lat, lon: lm.lon },
+                lat: lm.lat,
+                lon: lm.lon,
+                countryCode: lm.countryCode,
+                icon: lm.icon,
+            })),
+        };
+    }
+
+    /**
+     * Hybrid AI/ML Area-Scoped Search + Cross-Country Intent Detection
+     */
+    static async smartSearch(query: string, bias?: GisBiasContext): Promise<SmartSearchResponse> {
+        const cleanQuery = (query || '').trim();
+        const targetCountry = normalizeIso2(bias?.countryCode) || 'AE';
+        if (cleanQuery.length < 2) {
+            return { activeCountry: targetCountry, query: cleanQuery, results: [] };
+        }
+        const targetCity = (bias?.city || '').split(',')[0]?.trim() || '';
+        const cacheKey = `smart|${cleanQuery.toLowerCase()}|${targetCountry}|${targetCity.toLowerCase()}|${bias ? `${bias.lat.toFixed(2)},${bias.lon.toFixed(2)}` : ''}`;
+        const memHit = SMART_SEARCH_CACHE.get(cacheKey);
+        if (memHit) return memHit;
+
+        // 1. Primary: Go 1.24 In-Memory Vector + BM25F + Online LTR Microservice via Same-Origin Edge Proxy
+        if (typeof window !== 'undefined') {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 1500);
+            try {
+                const qs = new URLSearchParams({
+                    q: cleanQuery,
+                    country: targetCountry,
+                    city: targetCity,
+                });
+                if (bias) {
+                    qs.set('lat', String(bias.lat));
+                    qs.set('lon', String(bias.lon));
+                }
+                const res = await fetch(`/api/gis/smart-search?${qs.toString()}`, { signal: ctrl.signal });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data.results)) {
+                        const normalized: SmartSearchResponse = {
+                            activeCountry: data.activeCountry || targetCountry,
+                            activeCountryName: data.activeCountryName || ISO2_COUNTRY_NAMES[targetCountry] || targetCountry,
+                            query: cleanQuery,
+                            latencyMs: data.latencyMs,
+                            results: data.results,
+                            crossCountrySuggestion: data.crossCountrySuggestion || (data.results.length === 0 ? this.detectLocalCrossCountrySuggestion(cleanQuery, targetCountry) : null),
+                        };
+                        SMART_SEARCH_CACHE.set(cacheKey, normalized);
+                        return normalized;
+                    }
+                }
+            } catch {
+                // Graceful fallback to browser ensemble below
+            } finally {
+                clearTimeout(tid);
+            }
+        }
+
+        // 2. Resilient Browser Ensemble Fallback
+        const domestic = await this.geocode(cleanQuery, bias);
+        const crossCountrySuggestion = domestic.length <= 1
+            ? this.detectLocalCrossCountrySuggestion(cleanQuery, targetCountry)
+            : null;
+        const fallbackResp: SmartSearchResponse = {
+            activeCountry: targetCountry,
+            activeCountryName: ISO2_COUNTRY_NAMES[targetCountry] || targetCountry,
+            query: cleanQuery,
+            results: domestic,
+            crossCountrySuggestion,
+        };
+        SMART_SEARCH_CACHE.set(cacheKey, fallbackResp);
+        return fallbackResp;
+    }
 
     static getInstantLandmarkMatches(query: string, bias?: GisBiasContext): GisLocation[] {
         const repaired = repairCommonQueryTypos(query.trim());

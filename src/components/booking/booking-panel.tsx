@@ -1072,31 +1072,61 @@ export function BookingPanel({
     )
   }, [onPickupChange, onUserLocationDetected])
 
+  const [detectedPhysicalContext, setDetectedPhysicalContext] = React.useState<{ city: string; country: string; countryCode: string; lat: number; lon: number } | null>(null)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleCountrySwitch = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail || !detail.countryCode) return;
+      const nextCode = String(detail.countryCode).toUpperCase();
+      setClientGeoContext(prev => ({
+        ...prev,
+        city: detail.city || prev.city,
+        country: detail.countryName || detail.country || nextCode,
+        countryCode: nextCode,
+        distanceUnit: (nextCode === 'US' || nextCode === 'GB') ? 'mi' : 'km',
+        lat: Number(detail.lat || prev.lat),
+        lon: Number(detail.lon || prev.lon),
+      }));
+    };
+    window.addEventListener("transhola:switch-country", handleCountrySwitch);
+    return () => window.removeEventListener("transhola:switch-country", handleCountrySwitch);
+  }, []);
+
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
-      if (!urlParams.get("quote") && !localStorage.getItem("saved_itinerary")) {
-        // Fetch IP-based location for a passive, permission-less initial state
-        fetch('https://ipapi.co/json/')
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.city && data.country_name) {
+      const hasSavedDraft = Boolean(urlParams.get("quote") || localStorage.getItem("saved_itinerary"));
+      // Zero-Cost Cloudflare / Go ML Edge Context Detection ($0 API cost)
+      GisClient.detectEdgeContext()
+        .then(ctx => {
+          if (ctx && ctx.countryCode) {
+            setDetectedPhysicalContext({
+              city: ctx.city,
+              country: ctx.country,
+              countryCode: ctx.countryCode,
+              lat: ctx.lat,
+              lon: ctx.lon,
+            });
+            if (!hasSavedDraft) {
               setClientGeoContext({
-                city: data.city,
-                country: data.country_name,
-                countryCode: data.country_code,
-                distanceUnit: (data.country_code === 'US' || data.country_code === 'GB') ? 'mi' : 'km',
-                lat: data.latitude || 25.2048,
-                lon: data.longitude || 55.2708
+                city: ctx.city,
+                country: ctx.country,
+                countryCode: ctx.countryCode,
+                distanceUnit: ctx.distanceUnit || ((ctx.countryCode === 'US' || ctx.countryCode === 'GB') ? 'mi' : 'km'),
+                lat: ctx.lat,
+                lon: ctx.lon,
               });
             }
-          })
-          .catch(() => { /* silent fallback */ })
-          .finally(() => {
-             // Still try precise GPS (will prompt user)
-             detectLocation();
-          });
-      }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!hasSavedDraft) {
+            detectLocation();
+          }
+        });
     }
   }, [])
 
@@ -1915,6 +1945,42 @@ export function BookingPanel({
                 </div>
               ) : (
                 <>
+                  {/* Active Operating Area & Smart Country Switch Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 10px', borderRadius: '999px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 700, color: '#334155' }}>
+                      <MapPin style={{ width: '12px', height: '12px', color: '#2563eb' }} />
+                      <span>{clientGeoContext.city}, {clientGeoContext.country} ({clientGeoContext.countryCode || 'AE'})</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsCityModalOpen(true)}
+                        style={{ border: 'none', background: 'transparent', color: '#2563eb', fontWeight: 800, fontSize: '11px', cursor: 'pointer', padding: '0 0 0 4px' }}
+                      >
+                        Change country
+                      </button>
+                    </div>
+                  </div>
+                  {detectedPhysicalContext && detectedPhysicalContext.countryCode !== (clientGeoContext.countryCode || 'AE').toUpperCase() && (
+                    <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11px' }}>
+                      <span style={{ color: '#1e3a8a', fontWeight: 600 }}>
+                        You appear to be in <strong>{detectedPhysicalContext.city}, {detectedPhysicalContext.country}</strong>. Switch area?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setClientGeoContext(prev => ({
+                          ...prev,
+                          city: detectedPhysicalContext.city,
+                          country: detectedPhysicalContext.country,
+                          countryCode: detectedPhysicalContext.countryCode,
+                          distanceUnit: (detectedPhysicalContext.countryCode === 'US' || detectedPhysicalContext.countryCode === 'GB') ? 'mi' : 'km',
+                          lat: detectedPhysicalContext.lat,
+                          lon: detectedPhysicalContext.lon,
+                        }))}
+                        style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', fontWeight: 800, fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        Switch to {detectedPhysicalContext.countryCode}
+                      </button>
+                    </div>
+                  )}
                   <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '-0.8px', lineHeight: 1.1, margin: '0 0 6px', color: '#0f172a' }}>Where to?</h1>
                   <p style={{ fontSize: '13px', color: '#64748b', fontWeight: 500, margin: '0 0 22px' }}>Book a ride or schedule a charter fleet.</p>
                 </>
