@@ -125,6 +125,7 @@ export function LocationSearchInput({
   const [selectedDisplay, setSelectedDisplay] = React.useState<LocationResult | null>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const hasSelectedRef = React.useRef(false) // tracks if user already confirmed a result
+  const searchSeqRef = React.useRef(0)
   const mounted = React.useRef(false)
 
   const activeCountryCode = ((bias?.countryCode || "AE").toUpperCase() === "UK" ? "GB" : (bias?.countryCode || "AE").toUpperCase())
@@ -236,27 +237,43 @@ export function LocationSearchInput({
     // Prevent geocoding and auto-opening if we just selected something or got an external pin drop
     if (hasSelectedRef.current) return;
 
-    if (!query || query.length === 0) {
+    const trimmed = (query || "").trim()
+    if (!trimmed) {
+      searchSeqRef.current += 1
       setGisResults([])
+      setIsLoading(false)
       setRecentResults(getScopedRecents())
       return
     }
+
+    // 0ms Instant Verified Landmark Matches while live ensemble resolves
+    const instant = GisClient.getInstantLandmarkMatches(trimmed, bias || undefined)
+    if (instant.length > 0) {
+      setGisResults(instant.slice(0, 8))
+      setIsOpen(true)
+    }
+
+    const mySeq = ++searchSeqRef.current
     const timeout = setTimeout(async () => {
       setIsLoading(true)
       try {
-        const res = await GisClient.geocode(query, bias || undefined)
+        const res = await GisClient.geocode(trimmed, bias || undefined)
+        if (mySeq !== searchSeqRef.current || hasSelectedRef.current) return
         setGisResults(res.slice(0, 8))
-        // Only reopen if the user is actively typing
-        if (!hasSelectedRef.current) {
-           setIsOpen(true)
-        }
+        setIsOpen(true)
       } catch {
-        setGisResults([])
+        if (mySeq === searchSeqRef.current && instant.length === 0) {
+          setGisResults([])
+        }
       } finally {
-        setIsLoading(false)
+        if (mySeq === searchSeqRef.current) {
+          setIsLoading(false)
+        }
       }
-      setRecentResults(getScopedRecents(query))
-    }, 140)
+      if (mySeq === searchSeqRef.current) {
+        setRecentResults(getScopedRecents(trimmed))
+      }
+    }, 120)
     return () => clearTimeout(timeout)
   }, [query, activeCountryCode, activeCityName, bias?.lat, bias?.lon, getScopedRecents])
 
@@ -369,7 +386,7 @@ export function LocationSearchInput({
               <div style={{ padding: '6px 10px 4px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
                 Search Results
               </div>
-              {gisResults.map((r, i) => <ResultRow key={`gis-${i}`} loc={r} onSelect={handleSelect} icon="map" />)}
+              {gisResults.map((r, i) => <ResultRow key={`gis-${i}`} loc={r} onSelect={handleSelect} icon={r.icon || "map"} />)}
             </>
           )}
 
