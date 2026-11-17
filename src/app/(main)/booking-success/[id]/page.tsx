@@ -5,6 +5,7 @@ import { CheckCircle2, Clock, MapPin, Zap, Eye, Download, FileText, ArrowLeft, A
 import { createClient } from '@/lib/supabase/client'
 import { ReceiptModal } from '@/components/booking/receipt-modal'
 import { Button } from '@/components/ui/button'
+import { resolveTripSchedule } from '@/lib/schedule-utils'
 
 export default function BookingSuccessPage() {
   const { id } = useParams()
@@ -20,16 +21,33 @@ export default function BookingSuccessPage() {
     setMounted(true)
     async function fetchBooking() {
       if (!id) return
-      
-      // we lookup the booking in Supabase
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
-        
-      if (data) {
-        setBooking(data)
+      let record: any = null
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const headers: Record<string, string> = {}
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
+        const res = await fetch(`/api/client-records?id=${encodeURIComponent(String(id))}`, {
+          credentials: 'include',
+          headers,
+          cache: 'no-store',
+        })
+        const json = await res.json().catch(() => null)
+        if (json?.found && json?.record) {
+          record = json.record
+        }
+      } catch {}
+
+      if (!record) {
+        const { data } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle()
+        if (data) record = data
+      }
+
+      if (record) {
+        setBooking(record)
       }
       setLoading(false)
     }
@@ -38,13 +56,15 @@ export default function BookingSuccessPage() {
 
   const details = booking?.booking_details || {}
   const ref = booking?.booking_ref || (id ? `TRN-${(id as string).substring(0, 8).toUpperCase()}` : 'TRN-PENDING')
+  const sched = useMemo(() => resolveTripSchedule(details, booking), [details, booking])
   
   const tripDateTime = useMemo(() => {
-    if (details.startDate && details.startTime) {
-      return new Date(`${details.startDate}T${details.startTime}`)
+    if (sched.startLocalIso) {
+      const d = new Date(sched.startLocalIso)
+      if (!Number.isNaN(d.getTime())) return d
     }
     return new Date() // fallback to immediate
-  }, [details])
+  }, [sched.startLocalIso])
 
   const timeDiffMs = tripDateTime.getTime() - Date.now()
   const isFuture = timeDiffMs > 2 * 60 * 60 * 1000 // > 2 hours away
@@ -70,8 +90,8 @@ export default function BookingSuccessPage() {
   }, [isFuture])
 
   const pickupLabel = isFuture ? 'SCHEDULED FOR' : 'PICKUP ETA'
-  const pickupValue = isFuture 
-    ? tripDateTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const pickupValue = sched.hasDate
+    ? `${sched.displayDate}${sched.startTimeAmPm ? ` · ${sched.startTimeAmPm}` : ''}${sched.finishBadgeText ? ` (${sched.finishBadgeText})` : ''}`
     : (details.option?.eta || '10-20 min')
     
   if (loading) {

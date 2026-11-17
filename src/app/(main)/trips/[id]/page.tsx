@@ -56,6 +56,7 @@ import {
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
+import { resolveTripSchedule } from "@/lib/schedule-utils"
 
 import {
    DropdownMenu,
@@ -561,19 +562,23 @@ export default function BookingDetailsProfile() {
                duration: typeof details.duration === 'number' ? (Math.floor(details.duration / 3600) > 0 ? `${Math.floor(details.duration / 3600)}h ${Math.floor((details.duration % 3600) / 60)}m` : `${Math.floor((details.duration % 3600) / 60)} min`) : (details.duration || "2h 8m"),
                polyline: details.routePolyline || details.multiDayStore?.[0]?.routePolyline || null
             },
-            schedule: {
-               start: data.pickup_date || data.scheduled_at || new Date().toISOString(),
-               end: (() => {
-                  const baseStart = new Date(data.pickup_date || data.scheduled_at || Date.now());
-                  if (details.endDate && details.endTime) {
-                     const parsed = new Date(`${details.endDate}T${details.endTime}`);
-                     if (!isNaN(parsed.getTime())) return parsed.toISOString();
-                  }
+            schedule: (() => {
+               const sched = resolveTripSchedule(details, data, 0);
+               const startIso = sched.startLocalIso || data.pickup_date || data.scheduled_at || new Date().toISOString();
+               const endIso = sched.endLocalIso || (() => {
+                  const baseStart = new Date(startIso);
                   return new Date(baseStart.getTime() + 4 * 60 * 60 * 1000).toISOString();
-               })(),
-               actualStart: data.started_at,
-               actualEnd: data.completed_at
-            },
+               })();
+               return {
+                  start: startIso,
+                  end: endIso,
+                  startTimeAmPm: sched.startTimeAmPm,
+                  finishBadgeText: sched.finishBadgeText,
+                  isEstimatedFinish: sched.isEstimatedFinish,
+                  actualStart: data.started_at,
+                  actualEnd: data.completed_at,
+               };
+            })(),
             vehicles: details.option?.vehicles?.reduce((acc: number, v: any) => acc + v.count, 0) || data.vehicle_count || 1,
             totalPax: details.passengers || details.option?.totalSeats || 1,
             vehicleType: details.option?.vehicles?.[0]?.type || details.option?.label || data.vehicle_type || "Van",

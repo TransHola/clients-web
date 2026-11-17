@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
+import { resolveTripSchedule, formatTimeAmPm, formatDateHuman } from "@/lib/schedule-utils"
 import { OptimizationSolver, OptimizationResult } from "@/lib/rate-engine/optimization-solver"
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -116,9 +117,9 @@ function dispatchAirlineQuotationEmailClient(params: {
       city: params.bookingDetails?.city || '',
       tripType: params.tripType || 'One Way',
       passengers: params.passengers || 1,
-      dateStr: params.bookingDetails?.startDate || 'Flexible Date',
-      rawDate: params.bookingDetails?.startDate || '',
-      startTime: params.bookingDetails?.startTime || '09:00 AM',
+      dateStr: formatDateHuman(params.bookingDetails?.startDate || params.bookingDetails?.date || params.bookingDetails?.pickupDate) || 'Flexible Date',
+      rawDate: params.bookingDetails?.startDate || params.bookingDetails?.date || '',
+      startTime: formatTimeAmPm(params.bookingDetails?.startTime || params.bookingDetails?.time) || '9:00 AM',
       pickup: resolveAddressText(params.bookingDetails?.pickup, 'Origin Hub'),
       dropoff: resolveAddressText(params.bookingDetails?.dropoff, 'Destination Hub'),
       distanceText: params.distanceKm ? `${params.distanceKm} km` : String(params.bookingDetails?.distance || '—'),
@@ -197,9 +198,9 @@ function dispatchAirlineBookingEmailClient(params: {
       city: params.bookingDetails?.city || '',
       tripType: params.bookingDetails?.tripType || 'Charter Service',
       passengers: Number(params.bookingDetails?.passengers || params.option?.totalSeats || 1),
-      dateStr: params.bookingDetails?.startDate || 'Scheduled Date',
-      rawDate: params.bookingDetails?.startDate || '',
-      startTime: params.bookingDetails?.startTime || '09:00 AM',
+      dateStr: formatDateHuman(params.bookingDetails?.startDate || params.bookingDetails?.date || params.bookingDetails?.pickupDate) || 'Scheduled Date',
+      rawDate: params.bookingDetails?.startDate || params.bookingDetails?.date || '',
+      startTime: formatTimeAmPm(params.bookingDetails?.startTime || params.bookingDetails?.time) || '9:00 AM',
       pickup: resolveAddressText(params.bookingDetails?.pickup, 'Origin Hub'),
       dropoff: resolveAddressText(params.bookingDetails?.dropoff, 'Destination Hub'),
       distanceText: params.bookingDetails?.routeDistanceKm
@@ -947,10 +948,18 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           option: selected,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
-          startDate: bookingDetails?.startDate,
-          startTime: bookingDetails?.startTime,
+          startDate: bookingDetails?.startDate || bookingDetails?.date || bookingDetails?.pickupDate || bookingDetails?.multiDayStore?.[0]?.dateStr,
+          startTime: bookingDetails?.startTime || bookingDetails?.time || bookingDetails?.pickupTime || bookingDetails?.multiDayStore?.[0]?.startTime,
+          pickupDate: bookingDetails?.startDate || bookingDetails?.date || bookingDetails?.pickupDate || bookingDetails?.multiDayStore?.[0]?.dateStr,
+          pickupTime: bookingDetails?.startTime || bookingDetails?.time || bookingDetails?.pickupTime || bookingDetails?.multiDayStore?.[0]?.startTime,
+          date: bookingDetails?.startDate || bookingDetails?.date || bookingDetails?.pickupDate || bookingDetails?.multiDayStore?.[0]?.dateStr,
+          time: bookingDetails?.startTime || bookingDetails?.time || bookingDetails?.pickupTime || bookingDetails?.multiDayStore?.[0]?.startTime,
           endDate: bookingDetails?.endDate,
           endTime: bookingDetails?.endTime,
+          ataDate: bookingDetails?.ataDate,
+          ataTime: bookingDetails?.ataTime,
+          estFinishDate: bookingDetails?.estFinishDate || bookingDetails?.ataDate,
+          estFinishTime: bookingDetails?.estFinishTime || bookingDetails?.ataTime,
           passengers: bookingDetails?.passengers || passengers,
           tripType: bookingDetails?.tripType || tripType,
           roundTripMode: bookingDetails?.roundTripMode,

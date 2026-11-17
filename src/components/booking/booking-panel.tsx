@@ -1798,20 +1798,34 @@ export function BookingPanel({
                     </span>
                   )}
                   {tripType !== 'multi-day' && startDate && (
-                    <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                    <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, flexWrap: 'wrap' }}>
                       <CalendarDays style={{ width: '14px', height: '14px', color: '#3b82f6' }} />
                       {format(parseISO(startDate), 'MMM d, yyyy')}
                       {startTime ? ` • ${(() => {
                         const fmt = (t?: string) => {
                           if (!t || t === 'TBD') return 'TBD';
+                          const ampmMatch = String(t).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+                          if (ampmMatch) return `${parseInt(ampmMatch[1], 10)}:${ampmMatch[2]} ${ampmMatch[3].toUpperCase()}`;
                           const [h, m] = t.split(':');
                           if (!h || !m) return t;
                           const hNum = parseInt(h, 10);
+                          if (Number.isNaN(hNum)) return t;
                           const ampm = hNum >= 12 ? 'PM' : 'AM';
                           const h12 = hNum % 12 || 12;
                           return `${h12}:${m} ${ampm}`;
                         };
                         const startStr = fmt(startTime);
+                        if (tripType === 'one-way') {
+                          const estLeg = getLegEtaInfo(stops.length);
+                          const estDate = estLeg?.eta?.date || ataDate;
+                          const estTime = estLeg?.eta?.time || ataTime;
+                          if (estTime) {
+                            const estStr = fmt(estTime);
+                            const datePart = estDate && estDate !== startDate ? `${format(parseISO(estDate), 'MMM d')} ` : '';
+                            return `${startStr} · Est. Finish ${datePart}${estStr}`;
+                          }
+                          return startStr;
+                        }
                         const endStr = endTime ? fmt(endTime) : '';
                         if (endTime && endDate && endDate !== startDate) {
                           return `${startStr} - ${format(parseISO(endDate), 'MMM d')} ${endStr}`;
@@ -2102,15 +2116,23 @@ export function BookingPanel({
                         }
                         return (
                           <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                              <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                              <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {formatDuration((dropoffWaitMin || 0) * 60)}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
-                              <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Finish {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}
-                            </span>
+                            {tripType === 'one-way' ? (
+                              <span style={{ fontSize: '11px', color: '#065f46', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, background: '#ecfdf5', padding: '4px 9px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+                                <Flag style={{ width: '12px', height: '12px', color: '#059669' }} /> Est. Finish {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
+                              </span>
+                            ) : (
+                              <>
+                                <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                  <Clock style={{ width: '12px', height: '12px', color: '#3b82f6' }} /> Arrival {formatTimeStr(legInfo.eta.time)} {dayOffsetArr && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetArr}</span>}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                  <Timer style={{ width: '12px', height: '12px', color: '#f59e0b' }} /> Wait {formatDuration((dropoffWaitMin || 0) * 60)}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600, background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                                  <Clock style={{ width: '12px', height: '12px', color: '#10b981' }} /> Finish {legInfo.departEta ? formatTimeStr(legInfo.departEta.time) : formatTimeStr(legInfo.eta.time)} {dayOffsetDep && <span style={{ color: '#ef4444', fontSize: '10px' }}>{dayOffsetDep}</span>}
+                                </span>
+                              </>
+                            )}
                           </div>
                         );
                       })()}
@@ -3314,7 +3336,7 @@ export function BookingPanel({
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             {legInfo.eta && (
                               <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', background: '#f0fdf4', padding: '4px 10px', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                                <Flag size={14} color="#16a34a" /> Arrive {formatEtaStr(legInfo.eta)}
+                                <Flag size={14} color="#16a34a" /> {tripType === 'one-way' ? `Est. Finish ${formatEtaStr(legInfo.eta)}` : `Arrive ${formatEtaStr(legInfo.eta)}`}
                               </span>
                             )}
                             {routeDistance !== null && routeDuration !== null && (
@@ -3325,7 +3347,7 @@ export function BookingPanel({
                               </span>
                             )}
                           </div>
-                          {(endTime || legInfo.eta) && (
+                          {tripType !== 'one-way' && (endTime || legInfo.eta) && (
                             <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600, marginTop: '2px' }}>
                               Finish at {endTime ? formatEtaStr({ date: endDate || startDate, time: endTime }) : formatEtaStr(legInfo.eta)}
                             </span>
@@ -4316,10 +4338,16 @@ export function BookingPanel({
               returnLoc: returnLoc,
               startDate,
               startTime,
+              pickupDate: startDate,
+              pickupTime: startTime,
+              date: startDate,
+              time: startTime,
               endDate,
               endTime,
               ataDate,
               ataTime,
+              estFinishDate: getLegEtaInfo(stops.length)?.eta?.date || ataDate,
+              estFinishTime: getLegEtaInfo(stops.length)?.eta?.time || ataTime,
               pickupWaitMin,
               dropoffWaitMin,
               tripType,

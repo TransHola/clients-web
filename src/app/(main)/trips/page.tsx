@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { resolveTripSchedule } from "@/lib/schedule-utils"
 
 type Booking = {
   id: string
@@ -30,12 +31,14 @@ type Booking = {
   to: string
   date: string
   time: string
+  finishBadge?: string
   price: string
   rawPrice: number
   status: "upcoming" | "in_progress" | "completed" | "cancelled"
   scheduleState?: { label: string; color: string }
   cancellationReason?: string
   refundStatus?: string
+  dbRow?: any
   rawDetails?: any
 }
 
@@ -142,17 +145,18 @@ export default function TripsPage() {
           const rawStatusCode = String(b.status || 'pending').toLowerCase()
           const details = b.booking_details || {}
 
-          // Trip dates and times
-          const tripDateStr = details.startDate || details.date || details.pickupDate ||
-            (details.multiDayStore ? details.multiDayStore[0]?.dateStr : null) ||
-            b.pickup_date || b.start_date
-          const tripTimeStr = details.startTime || details.time || details.pickupTime ||
-            (details.multiDayStore ? details.multiDayStore[0]?.startTime : null) || ""
+          // Canonical trip dates, AM/PM times, and Est. Finish resolution
+          const dbScheduleMeta = {
+            start_date: b.start_date,
+            pickup_date: b.pickup_date,
+            scheduled_at: b.scheduled_at,
+            trip_type: b.trip_type,
+          }
+          const resolvedSched = resolveTripSchedule(details, dbScheduleMeta, 0)
 
           let start = now
-          if (tripDateStr) {
-            const dateTimeStr = tripTimeStr ? `${tripDateStr}T${tripTimeStr}:00` : tripDateStr
-            const parsed = new Date(dateTimeStr).getTime()
+          if (resolvedSched.startLocalIso) {
+            const parsed = new Date(resolvedSched.startLocalIso).getTime()
             if (!isNaN(parsed)) start = parsed
           } else if (b.pickup_date) {
             const parsed = new Date(b.pickup_date).getTime()
@@ -184,16 +188,7 @@ export default function TripsPage() {
             scheduleState = { label: "In Progress", color: "bg-indigo-50 text-indigo-700 border-indigo-200" }
           }
 
-          let displayDate = "Date pending"
-          if (tripDateStr) {
-            try {
-              displayDate = new Date(tripDateStr).toLocaleDateString(undefined, {
-                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
-              })
-            } catch {
-              displayDate = String(tripDateStr)
-            }
-          }
+          const displayDate = resolvedSched.displayDateWithWeekday
 
           const currency = b.currency || details.currency || "EUR"
           const rawPrice = b.price || b.total_amount || b.total_price || details.option?.price || 0
@@ -211,7 +206,8 @@ export default function TripsPage() {
             from: fromAddress,
             to: toAddress,
             date: displayDate,
-            time: tripTimeStr || "Scheduled",
+            time: resolvedSched.startTimeAmPm || "Scheduled",
+            finishBadge: resolvedSched.finishBadgeText,
             price: priceFormatted,
             rawPrice,
             status: computedStatus,
@@ -227,6 +223,7 @@ export default function TripsPage() {
               phone: b.operator.phone_number || "Contact Support",
             } : undefined,
             cancellationReason: b.status === "cancelled" || b.cancelled_at ? "Cancelled by user" : undefined,
+            dbRow: dbScheduleMeta,
             rawDetails: b.booking_details
           }
         })
@@ -531,9 +528,14 @@ function BookingList({
                 <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                 <span className="font-medium truncate text-slate-700">{b.from}</span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pl-1">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pl-1 flex-wrap">
                 <div className="w-px h-4 bg-slate-300 ml-0.5" />
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-slate-400" /> {b.date} · {b.time}</span>
+                <span className="flex items-center gap-1 font-medium text-slate-600"><Clock className="w-3 h-3 text-slate-400" /> {b.date} · {b.time}</span>
+                {b.finishBadge && (
+                  <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                    {b.finishBadge}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-sm bg-blue-600 shrink-0" />
@@ -685,6 +687,18 @@ function BookingListItem({ b, onCancelClick }: { b: Booking; onCancelClick: (id:
             <p className="text-sm font-bold text-slate-800 line-clamp-2 leading-tight" title={defaultTo}>{defaultTo}</p>
           </div>
         </div>
+      </div>
+
+      {/* Schedule Block */}
+      <div className="w-full xl:w-[175px] shrink-0 hidden md:block">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Schedule</p>
+        <p className="text-sm font-bold text-slate-900 truncate">{b.date}</p>
+        {b.time && <p className="text-xs font-bold text-slate-700 truncate mt-0.5">{b.time}</p>}
+        {b.finishBadge && (
+          <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md w-fit mt-1 truncate">
+            {b.finishBadge}
+          </p>
+        )}
       </div>
 
       {/* Right side: Price & Actions */}

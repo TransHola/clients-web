@@ -12,6 +12,7 @@ import { ItineraryTimelinePanel } from "@/components/booking/itinerary-timeline-
 import { VehicleDetailsPanel } from "@/components/booking/vehicle-details-panel"
 import { LiveMapWrapper } from "@/components/map/live-map-wrapper"
 import { useRouter } from "next/navigation"
+import { resolveTripSchedule } from "@/lib/schedule-utils"
 
 export default function QuotationsPage() {
   const router = useRouter()
@@ -55,8 +56,22 @@ export default function QuotationsPage() {
           if (details.option && details.option.priceAED && !details.option.price) {
              details.option.price = details.option.priceAED;
           }
-          // Inject actual DB row currency downward into the parsed rawDetails payload
+          // Inject actual DB row currency & schedule metadata downward into rawDetails
           details.currency = row.currency || details.currency || "AED";
+          const dbScheduleMeta = {
+            start_date: row.start_date,
+            pickup_date: row.pickup_date,
+            scheduled_at: row.scheduled_at,
+            trip_type: row.trip_type,
+          };
+          details.dbRow = dbScheduleMeta;
+          const resolvedSched = resolveTripSchedule(details, dbScheduleMeta, 0);
+          if (!details.startDate && resolvedSched.dateIso) {
+            details.startDate = resolvedSched.dateIso;
+          }
+          if (!details.startTime && resolvedSched.startTime24) {
+            details.startTime = resolvedSched.startTime24;
+          }
           
           const expiresAt = new Date(new Date(row.created_at).getTime() + 86400000);
           
@@ -74,6 +89,7 @@ export default function QuotationsPage() {
             status: expiresAt.getTime() < Date.now() ? "expired" : "valid",
             expiresAt: expiresAt,
             createdAt: row.created_at,
+            dbRow: dbScheduleMeta,
             rawDetails: details
           }
         })
@@ -360,11 +376,12 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
   const isExpired = quote.status === "expired"
   const details = quote.rawDetails || {}
   
-  const tripDate = details.date || details.pickupDate || (details.multiDayStore ? details.multiDayStore[0]?.dateStr : null) || "Date pending"
-  const tripTime = details.time || details.pickupTime || (details.multiDayStore ? details.multiDayStore[0]?.startTime : null) || ""
   const numDays = details.tripType === 'multi-day' && details.multiDayStore ? details.multiDayStore.length : 1;
-
   const isMultiDay = details.tripType === 'multi-day' && details.multiDayStore && details.multiDayStore.length > 1;
+  const sched = resolveTripSchedule(details, quote.dbRow || details.dbRow, isMultiDay ? routeDayIdx : 0);
+  const tripDate = sched.displayDate;
+  const tripTime = sched.startTimeAmPm;
+
   const currentDay = isMultiDay ? details.multiDayStore[routeDayIdx] : details;
 
   const defaultFrom = isMultiDay ? (typeof currentDay?.pickupLoc === 'string' ? currentDay.pickupLoc : (currentDay?.pickupLoc?.name || currentDay?.pickupLoc?.address || 'Unknown Pickup')) : quote.from;
@@ -379,7 +396,7 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
         {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.6)]" />}
         
         <div className="flex justify-between items-start gap-2">
-           <div className="flex items-center gap-3">
+           <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center shrink-0">
                 <CarFront className="w-6 h-6 text-slate-700" />
               </div>
@@ -390,9 +407,14 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 rounded-md border border-amber-200">Agency</span>
                    )}
                  </div>
-                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">
-                   {quote.id} • {tripDate}{numDays > 1 ? ` • ${numDays} Days` : ''}
+                 <p className="text-[11px] font-bold text-slate-500 tracking-wide truncate">
+                   <span className="uppercase">{quote.id}</span> • {tripDate}{tripTime ? ` @ ${tripTime}` : ''}{numDays > 1 ? ` • ${numDays} Days` : ''}
                  </p>
+                 {sched.finishBadgeText && (
+                   <p className="text-[10.5px] font-bold text-emerald-700 truncate mt-0.5">
+                     {sched.finishBadgeText}
+                   </p>
+                 )}
                  {details.isThirdParty && details.thirdPartyInfo && (
                     <p className="text-[10px] font-medium text-slate-500 truncate mt-0.5">
                       For: {details.thirdPartyInfo.firstName} {details.thirdPartyInfo.lastName} {details.thirdPartyInfo.company ? `(${details.thirdPartyInfo.company})` : ''}
@@ -550,11 +572,18 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
          </div>
       </div>
       
-      {/* Meta Date Block */}
-      <div className="w-full xl:w-[140px] shrink-0 hidden md:block">
+      {/* Meta Date & Schedule Block */}
+      <div className="w-full xl:w-[175px] shrink-0 hidden md:block">
          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Schedule</p>
          <p className="text-sm font-bold text-slate-900 truncate">{tripDate}</p>
-         {tripTime && <p className="text-xs font-bold text-slate-500 truncate">{tripTime}</p>}
+         {tripTime && (
+           <p className="text-xs font-bold text-slate-700 truncate mt-0.5">{tripTime}</p>
+         )}
+         {sched.finishBadgeText && (
+           <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md w-fit mt-1 truncate">
+             {sched.finishBadgeText}
+           </p>
+         )}
       </div>
 
       {/* Price Block */}

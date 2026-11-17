@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import { MapPin, Navigation, Compass, CalendarDays, Clock, Users, ArrowDown, Flag } from "lucide-react"
+import { computeWaypointTimings } from "@/lib/schedule-utils"
 
 export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onActiveDayChange }: { bookingDetails: any, activeDayIdx?: number, onActiveDayChange?: (idx: number) => void }) {
   if (!bookingDetails) return <div className="p-8 text-center text-muted-foreground">No itinerary details available</div>
 
-  const { pickup, dropoff, stops = [], startDate, startTime, passengers, tripType, option, multiDayStore } = bookingDetails
+  const { pickup, dropoff, stops = [], passengers, tripType, option, multiDayStore } = bookingDetails
 
   const [internalDayIdx, setInternalDayIdx] = React.useState(0)
   const currentDayIdx = typeof onActiveDayChange !== 'undefined' ? activeDayIdx : internalDayIdx;
@@ -17,12 +18,12 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
   };
 
   const isMultiDay = tripType === 'multi-day' && multiDayStore && multiDayStore.length > 1;
+  const timingMeta = computeWaypointTimings(bookingDetails, bookingDetails?.dbRow, isMultiDay ? currentDayIdx : 0);
+  const sched = timingMeta.schedule;
 
   const effPickup = isMultiDay ? multiDayStore[currentDayIdx]?.pickupLoc : pickup;
   const effDropoff = isMultiDay ? multiDayStore[currentDayIdx]?.dropoffLoc : dropoff;
   const effStops = isMultiDay ? multiDayStore[currentDayIdx]?.stops || [] : stops;
-  const effStartTime = isMultiDay ? multiDayStore[currentDayIdx]?.startTime : startTime;
-  const effDate = isMultiDay ? multiDayStore[currentDayIdx]?.dateStr : startDate;
 
   const normalizeLoc = (loc: any) => {
     if (!loc) return null;
@@ -34,9 +35,29 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
   const normDropoff = normalizeLoc(effDropoff);
 
   const waypoints = [
-    { type: "pickup", ...normPickup, time: effStartTime, label: "Pickup Location" },
-    ...effStops.map((s: any, i: number) => ({ type: "stop", ...normalizeLoc(s), label: `Stop ${i + 1}` })),
-    { type: "dropoff", ...normDropoff, label: "Final Dropoff" }
+    {
+      type: "pickup",
+      ...normPickup,
+      arriveTime: timingMeta.pickupArriveAmPm,
+      departTime: timingMeta.pickupDepartAmPm,
+      boardingWaitMin: timingMeta.pickupWaitMin,
+      label: "Pickup Location",
+    },
+    ...effStops.map((s: any, i: number) => ({
+      type: "stop",
+      ...normalizeLoc(s),
+      arriveTime: timingMeta.stopTimings[i]?.arriveAmPm || "",
+      departTime: timingMeta.stopTimings[i]?.departAmPm || "",
+      stopDurationMin: s?.stopDurationMin ?? timingMeta.stopTimings[i]?.waitMin ?? 0,
+      label: `Stop ${i + 1}`,
+    })),
+    {
+      type: "dropoff",
+      ...normDropoff,
+      finishBadge: sched.finishBadgeText,
+      isEstimatedFinish: sched.isEstimatedFinish,
+      label: "Final Dropoff",
+    },
   ].filter(w => w && (w.address || w.name)) // filter out invalid spots
 
   return (
@@ -44,10 +65,20 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
       {/* Header */}
       <div className="p-6 border-b bg-slate-50 shrink-0">
         <h2 className="text-xl font-black text-slate-900 mb-1">Trip Itinerary</h2>
-        <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-slate-500 mt-3">
-          {effDate && (
-            <span className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border shadow-sm">
-              <CalendarDays className="w-4 h-4 text-blue-600" /> {effDate}
+        <div className="flex flex-wrap items-center gap-2.5 text-sm font-medium text-slate-600 mt-3">
+          {sched.hasDate && (
+            <span className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border shadow-sm font-bold text-slate-800">
+              <CalendarDays className="w-4 h-4 text-blue-600" /> {sched.displayDate}
+            </span>
+          )}
+          {sched.startTimeAmPm && (
+            <span className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border shadow-sm font-bold text-slate-800">
+              <Clock className="w-4 h-4 text-blue-600" /> {sched.startTimeAmPm}
+            </span>
+          )}
+          {sched.finishBadgeText && (
+            <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-200 px-2.5 py-1 rounded-md border shadow-sm font-bold text-xs">
+              <Flag className="w-3.5 h-3.5 text-emerald-600" /> {sched.finishBadgeText}
             </span>
           )}
           {passengers && (
@@ -56,7 +87,7 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
             </span>
           )}
           {tripType && (
-            <span className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border shadow-sm uppercase text-xs">
+            <span className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-md border shadow-sm uppercase text-xs font-bold">
               <Compass className="w-4 h-4 text-blue-600" /> {tripType}
             </span>
           )}
@@ -126,14 +157,29 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
                   
                   {/* Badges container */}
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    {wp.time && (
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" /> {wp.time}
+                    {wp.arriveTime && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" /> Arrive {wp.arriveTime}
                       </div>
                     )}
-                    {wp.stopDurationMin && (
+                    {wp.boardingWaitMin > 0 && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-50 border border-violet-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <ArrowDown className="w-3.5 h-3.5 text-violet-600" /> {wp.boardingWaitMin} min boarding
+                      </div>
+                    )}
+                    {wp.stopDurationMin > 0 && (
                       <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 w-fit px-2.5 py-1 rounded-md shadow-sm">
                         <ArrowDown className="w-3.5 h-3.5 text-blue-500" /> {wp.stopDurationMin} min wait
+                      </div>
+                    )}
+                    {wp.departTime && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" /> Depart {wp.departTime}
+                      </div>
+                    )}
+                    {wp.finishBadge && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 w-fit px-2.5 py-1 rounded-md shadow-sm">
+                        <Flag className="w-3.5 h-3.5 text-emerald-600" /> {wp.finishBadge}
                       </div>
                     )}
                   </div>
@@ -153,7 +199,7 @@ export function ItineraryTimelinePanel({ bookingDetails, activeDayIdx = 0, onAct
           </div>
           <div className="text-right">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total</p>
-            <p className="text-xl font-black text-slate-900">{option.currency || 'USD'} {option.price}</p>
+            <p className="text-xl font-black text-slate-900">{option.currency || 'AED'} {option.price}</p>
           </div>
         </div>
       )}
