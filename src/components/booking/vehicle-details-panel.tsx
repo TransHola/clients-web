@@ -169,6 +169,105 @@ function buildVehicleBreakdownAndLogs(v: any, idx: number, allVehicles: any[], o
   }
 }
 
+function formatVariationLabel(raw: string): string {
+  const key = String(raw || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+  if (key === 'oneway') return 'One Way'
+  if (key === 'roundtrip' || key === 'roundtripcontinuous') return 'Round Trip'
+  if (key === 'shuttle') return 'Shuttle'
+  if (key === 'multiday') return 'Multi-Day'
+  if (!raw) return ''
+  return String(raw).trim()
+}
+
+function formatCompactNum(val: number): string {
+  const n = Number(val || 0)
+  if (!Number.isFinite(n)) return '0'
+  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '')
+}
+
+function extractSharedEngineContext(computedVehicles: Array<{ raw: any; meta: any }>, option: any) {
+  const primaryMeta = computedVehicles.find((item) => item.meta?.rateCardSummary)?.meta || computedVehicles[0]?.meta
+  const rc = primaryMeta?.rateCardSummary
+  const daysCount = Math.max(1, Number(primaryMeta?.days || option?.daysCount || 1))
+
+  if (rc) {
+    const unitLabel = String(rc.unitLabel || 'hrs')
+    const billableVal = Number(rc.billableHours || 0)
+    const distVal = Number(rc.distanceUnits || 0)
+    const distUnit = String(rc.distanceUnit || 'km')
+
+    return {
+      variationLabel: formatVariationLabel(rc.variation || option?.tripType || ''),
+      engineLabel: String(rc.engineLabel || 'Duration Engine'),
+      daysLabel: `${daysCount} Day${daysCount > 1 ? 's' : ''}`,
+      billableLabel: billableVal > 0 ? `Billable ${formatCompactNum(billableVal)} ${unitLabel}` : '',
+      distanceLabel: distVal > 0 ? `${formatCompactNum(distVal)} ${distUnit}` : '',
+      pricingModeLabel: rc.tiered ? 'Tiered Pricing' : 'Standard Tariff',
+    }
+  }
+
+  // Fallback parser for legacy saved quotations that only stored debugLog strings
+  const firstEngineLog =
+    computedVehicles
+      .flatMap((item) => (Array.isArray(item.meta?.logs) ? item.meta.logs : []))
+      .find((line: string) => line.includes('Engine:')) || ''
+
+  if (firstEngineLog) {
+    const cleaned = firstEngineLog.replace(/\[Day \d+\]\s*Engine:\s*/, '').trim()
+    const parenIdx = cleaned.indexOf('(')
+    const engineLabel = parenIdx > 0 ? cleaned.slice(0, parenIdx).trim() : cleaned
+    const inner = parenIdx > 0 ? cleaned.slice(parenIdx + 1).replace(/\)$/, '') : ''
+    const tokens = inner.split('·').map((t: string) => t.trim()).filter(Boolean)
+
+    const variationRaw = tokens.find((t: string) => /^(oneway|roundtrip|shuttle|multiday|one way|round trip)/i.test(t)) || ''
+    const billableTok = tokens.find((t: string) => /^billable\s+/i.test(t)) || ''
+    const distTok = tokens.find((t: string) => /^\d+(\.\d+)?\s*(km|mi|miles)\b/i.test(t)) || ''
+    const tierTok = tokens.find((t: string) => /tiered/i.test(t))
+
+    return {
+      variationLabel: formatVariationLabel(variationRaw || option?.tripType || ''),
+      engineLabel: engineLabel || 'Verified Charter Rate',
+      daysLabel: `${daysCount} Day${daysCount > 1 ? 's' : ''}`,
+      billableLabel: billableTok,
+      distanceLabel: distTok,
+      pricingModeLabel: tierTok ? 'Tiered Pricing' : '',
+    }
+  }
+
+  return {
+    variationLabel: formatVariationLabel(option?.tripType || ''),
+    engineLabel: 'Verified Charter Rate',
+    daysLabel: `${daysCount} Day${daysCount > 1 ? 's' : ''}`,
+    billableLabel: '',
+    distanceLabel: '',
+    pricingModeLabel: '',
+  }
+}
+
+function extractVehicleRateBadge(meta: any, curr: string): string {
+  const rc = meta?.rateCardSummary
+  if (rc && Number(rc.baseRate) > 0) {
+    const singularUnit = String(rc.unitLabel || 'hrs').replace(/s$/, '')
+    const minPart = Number(rc.minBillable) > 0 ? ` · Min ${formatCompactNum(rc.minBillable)} ${rc.unitLabel || 'hrs'}` : ''
+    return `Base ${formatMoney(curr, rc.baseRate)}/${singularUnit}${minPart}`
+  }
+
+  const engineLine = Array.isArray(meta?.logs) ? meta.logs.find((l: string) => l.includes('Engine:')) : ''
+  if (engineLine) {
+    const innerMatch = engineLine.match(/\(([^)]+)\)/)
+    if (innerMatch) {
+      const tokens = innerMatch[1].split('·').map((t: string) => t.trim())
+      const baseTok = tokens.find((t: string) => /^base\s+/i.test(t))
+      const minTok = tokens.find((t: string) => /^min\s+/i.test(t))
+      if (baseTok) {
+        return minTok ? `${baseTok} · ${minTok}` : baseTok
+      }
+    }
+  }
+
+  return `${formatMoney(curr, meta.unitGross)} / unit`
+}
+
 export function VehicleDetailsPanel({
   option,
   amenities = [],
@@ -192,6 +291,15 @@ export function VehicleDetailsPanel({
     setExpandedVehicles({ 0: true, 1: true, 2: true })
   }, [option?.id, option?.label])
 
+  useEffect(() => {
+    if (!engineModalOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEngineModalOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [engineModalOpen])
+
   if (!option) return null
 
   const curr = resolveCleanCurrency(option)
@@ -213,6 +321,34 @@ export function VehicleDetailsPanel({
       : +computedVehicles.reduce((s, item) => s + item.meta.taxAmount, 0).toFixed(2)
   const totalNetSubtotal = +(totalGrossPrice - totalTaxAmount).toFixed(2)
   const primaryTaxLabel = computedVehicles[0]?.meta.taxLabel || 'VAT / Transport Tax'
+
+  const vehicleTypeCount = computedVehicles.length
+  const totalFleetUnits = computedVehicles.reduce((s, item) => s + item.meta.count, 0)
+  const totalFleetSeats = computedVehicles.reduce((s, item) => s + item.meta.count * item.meta.seats, 0)
+  const maxRowsPerVehicle = Math.max(
+    1,
+    ...computedVehicles.map((item) =>
+      item.meta.isAuthoritative ? item.meta.lineItems.length + 2 : item.meta.logs.length
+    )
+  )
+
+  const dynamicModalMaxWidth =
+    vehicleTypeCount >= 3
+      ? 'min(1380px, 96vw)'
+      : vehicleTypeCount === 2
+        ? 'min(1120px, 95vw)'
+        : maxRowsPerVehicle >= 6
+          ? 'min(880px, 94vw)'
+          : 'min(680px, 94vw)'
+
+  const vehicleGridColumns =
+    vehicleTypeCount >= 3
+      ? 'repeat(auto-fit, minmax(360px, 1fr))'
+      : vehicleTypeCount === 2
+        ? 'repeat(auto-fit, minmax(420px, 1fr))'
+        : '1fr'
+
+  const sharedEngineContext = extractSharedEngineContext(computedVehicles, option)
 
   const toggleVehicleDropdown = (idx: number) => {
     setExpandedVehicles((prev) => ({
@@ -634,7 +770,7 @@ export function VehicleDetailsPanel({
         </div>
       </div>
 
-      {/* Rate Engine Calculation Log Modal */}
+      {/* Rate Engine Calculation Log Modal — Dynamic Width, Smooth Scroll & Zero Duplication */}
       {engineModalOpen &&
         mounted &&
         typeof document !== 'undefined' &&
@@ -644,13 +780,13 @@ export function VehicleDetailsPanel({
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(15, 23, 42, 0.55)',
+              background: 'rgba(15, 23, 42, 0.58)',
               backdropFilter: 'blur(3px)',
               zIndex: 999999,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '24px',
+              padding: '20px',
             }}
           >
             <div
@@ -659,31 +795,58 @@ export function VehicleDetailsPanel({
                 background: '#ffffff',
                 borderRadius: '16px',
                 width: '100%',
-                maxWidth: '660px',
-                maxHeight: '84vh',
+                maxWidth: dynamicModalMaxWidth,
+                maxHeight: 'min(90vh, 880px)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.3)',
+                boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.32)',
                 border: '1px solid #e2e8f0',
+                transition: 'max-width 0.18s ease',
               }}
             >
               {/* Modal Header */}
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: '15px 20px',
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '12px',
+                  background: '#ffffff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
                     <Calculator size={17} color="#2563eb" />
                   </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#0f172a' }}>Rate Engine Calculation Log</h3>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#0f172a' }}>
+                      Rate Engine Calculation Log
+                    </h3>
                     <p style={{ margin: '2px 0 0', fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>
-                      Live SuperAdmin country tariff · Go 1.24 fixed-point calculation trace
+                      Live SuperAdmin country tariff · Exact per-vehicle cost allocation
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEngineModalOpen(false)}
+                  aria-label="Close calculation log"
                   style={{
                     width: '32px',
                     height: '32px',
@@ -695,115 +858,482 @@ export function VehicleDetailsPanel({
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#64748b',
+                    flexShrink: 0,
                   }}
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              {/* Modal Body */}
-              <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {computedVehicles.map(({ raw: v, meta }, idx: number) => {
-                  const logs = meta.logs
-                  return (
-                    <div
-                      key={idx}
+              {/* Single Deduplicated Trip & Engine Context Bar */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: '10px 20px',
+                  background: '#f8fafc',
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {sharedEngineContext.variationLabel && (
+                    <span
                       style={{
-                        background: '#ffffff',
-                        borderRadius: '14px',
-                        border: '1px solid #e2e8f0',
-                        overflow: 'hidden',
-                        boxShadow: '0 4px 10px -2px rgba(15, 23, 42, 0.05)',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#1e40af',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
                       }}
                     >
-                      <div style={{ padding: '12px 16px', background: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <Zap size={15} color="#38bdf8" />
-                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#ffffff' }}>
-                          {meta.count}× {v.type || option.title || 'Charter Vehicle'}
-                        </h4>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#cbd5e1' }}>
-                          · Up to {meta.seats} Pax/unit ({meta.count * meta.seats} Total)
-                        </span>
-                        <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 800, color: '#38bdf8', background: '#1e293b', border: '1px solid #334155', padding: '3px 9px', borderRadius: '999px' }}>
-                          SUPERADMIN TARIFF ENGINE
-                        </span>
-                      </div>
+                      {sharedEngineContext.variationLabel}
+                    </span>
+                  )}
+                  {sharedEngineContext.engineLabel && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Zap size={11} color="#2563eb" />
+                      {sharedEngineContext.engineLabel}
+                    </span>
+                  )}
+                  {sharedEngineContext.daysLabel && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#334155',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                      }}
+                    >
+                      {sharedEngineContext.daysLabel}
+                    </span>
+                  )}
+                  {sharedEngineContext.billableLabel && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#334155',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Clock size={11} color="#64748b" />
+                      {sharedEngineContext.billableLabel}
+                    </span>
+                  )}
+                  {sharedEngineContext.distanceLabel && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#334155',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Route size={11} color="#64748b" />
+                      {sharedEngineContext.distanceLabel}
+                    </span>
+                  )}
+                  {sharedEngineContext.pricingModeLabel && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#0369a1',
+                        background: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                      }}
+                    >
+                      {sharedEngineContext.pricingModeLabel}
+                    </span>
+                  )}
+                </div>
 
-                      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {logs.map((log: string, lIdx: number) => {
-                          const isInit = log.includes('initialized for')
-                          const isDayHeader = log.includes('Engine:')
-                          const isCharge = log.includes('-> Charged')
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
+                  {totalFleetUnits} Vehicle{totalFleetUnits > 1 ? 's' : ''} · {totalFleetSeats} Seats Total
+                </div>
+              </div>
 
-                          if (isInit) return null
+              {/* Scrollable Modal Body — Pure Block Scroll Container + Dynamic CSS Grid (Zero Clipping) */}
+              <div
+                style={{
+                  flex: '1 1 auto',
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  overscrollBehavior: 'contain',
+                  WebkitOverflowScrolling: 'touch',
+                  padding: '16px 20px',
+                  background: '#f1f5f9',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: vehicleGridColumns,
+                    gap: '16px',
+                    alignItems: 'start',
+                  }}
+                >
+                  {computedVehicles.map(({ raw: v, meta }, idx: number) => {
+                    const vehicleTitle = v.type || option.title || 'Charter Vehicle'
+                    const rateBadge = extractVehicleRateBadge(meta, curr)
+                    const useTwoColItems =
+                      vehicleTypeCount === 1 && meta.isAuthoritative && meta.lineItems.length >= 5
 
-                          if (isDayHeader) {
-                            const dayMatch = log.match(/\[(Day \d+)\]/)
-                            const dayStr = dayMatch ? dayMatch[1] : 'Day 1'
-                            const details = log.replace(/\[Day \d+\]\s*Engine:/, '').trim()
-                            return (
-                              <div key={lIdx} style={{ marginTop: lIdx > 0 ? '6px' : 0, paddingBottom: '6px', borderBottom: '1.5px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 900, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '2px 7px', borderRadius: '5px' }}>
-                                  {dayStr}
-                                </span>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: '#1e293b' }}>{details}</span>
-                              </div>
-                            )
-                          }
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '14px',
+                          border: '1px solid #cbd5e1',
+                          boxShadow: '0 4px 12px -2px rgba(15, 23, 42, 0.06)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                        }}
+                      >
+                        {/* Per-Vehicle Dark Header — Shows Only Vehicle-Specific Capacity & Base Tariff */}
+                        <div
+                          style={{
+                            padding: '11px 15px',
+                            background: '#0f172a',
+                            borderRadius: '13px 13px 0 0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                            <Zap size={14} color="#38bdf8" />
+                            <h4
+                              style={{
+                                margin: 0,
+                                fontSize: '13.5px',
+                                fontWeight: 800,
+                                color: '#ffffff',
+                                textTransform: 'capitalize',
+                              }}
+                            >
+                              {meta.count}× {vehicleTitle}
+                            </h4>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#cbd5e1' }}>
+                              · Up to {meta.seats} Pax/unit ({meta.count * meta.seats} Seats)
+                            </span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 800,
+                              color: '#38bdf8',
+                              background: '#1e293b',
+                              border: '1px solid #334155',
+                              padding: '3px 9px',
+                              borderRadius: '999px',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {rateBadge}
+                          </span>
+                        </div>
 
-                          if (isCharge) {
-                            const parts = log.split('-> Charged')
-                            const title = parts[0].replace(/\[Day \d+\]/, '').trim()
-                            const mathParts = parts[1].split('=')
-                            const math = (mathParts[0] || '').trim().replace('@', '×')
-                            const rawTotalStr = (mathParts[1] || '').trim()
-                            const numericTotal = parseFloat(rawTotalStr.replace(/[^0-9.-]/g, ''))
-                            const formattedTotal = !isNaN(numericTotal) ? formatMoney(curr, numericTotal) : rawTotalStr
-                            const isTotalRow = title.toLowerCase().startsWith('total ')
-
-                            return (
+                        {/* Per-Vehicle Calculation Rows */}
+                        <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {meta.isAuthoritative ? (
+                            <>
                               <div
-                                key={lIdx}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: useTwoColItems
+                                    ? 'repeat(auto-fit, minmax(300px, 1fr))'
+                                    : '1fr',
+                                  gap: '8px',
+                                }}
+                              >
+                                {meta.lineItems.map((item: any, liIdx: number) => (
+                                  <div
+                                    key={liIdx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      gap: '10px',
+                                      padding: '8px 11px',
+                                      background: '#f8fafc',
+                                      borderRadius: '8px',
+                                      borderLeft: '3px solid #cbd5e1',
+                                    }}
+                                  >
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                      <div
+                                        style={{
+                                          fontSize: '12px',
+                                          fontWeight: 700,
+                                          color: '#1e293b',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          flexWrap: 'wrap',
+                                        }}
+                                      >
+                                        <span>{item.label}</span>
+                                        {!item.taxable && (
+                                          <span
+                                            style={{
+                                              fontSize: '9.5px',
+                                              fontWeight: 800,
+                                              color: '#475569',
+                                              background: '#e2e8f0',
+                                              padding: '1px 5px',
+                                              borderRadius: '4px',
+                                            }}
+                                          >
+                                            Non-taxable
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div
+                                        style={{
+                                          fontSize: '10.5px',
+                                          color: '#64748b',
+                                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                          marginTop: '2px',
+                                        }}
+                                      >
+                                        {item.sublabel || item.formula}
+                                      </div>
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: '13px',
+                                        fontWeight: 800,
+                                        color: '#0f172a',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {formatMoney(curr, item.totalAmount)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Net Subtotal + Statutory Tax + Vehicle Allocation Total */}
+                              {(meta.lineItems.length > 1 || meta.taxAmount > 0) && (
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '7px 11px',
+                                    background: '#ffffff',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e2e8f0',
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569' }}>
+                                      Net Vehicle Subtotal
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: '10.5px',
+                                        color: '#64748b',
+                                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                      }}
+                                    >
+                                      {meta.count > 1
+                                        ? `${formatMoney(curr, meta.unitNet)} net/unit × ${meta.count} vehicles`
+                                        : 'Net charter tariff before tax'}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap' }}>
+                                    {formatMoney(curr, meta.netSubtotal)}
+                                  </div>
+                                </div>
+                              )}
+
+                              {meta.taxAmount > 0 && (
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '7px 11px',
+                                    background: '#f8fafc',
+                                    borderRadius: '8px',
+                                    borderLeft: '3px solid #94a3b8',
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155' }}>
+                                      {meta.taxLabel}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: '10.5px',
+                                        color: '#64748b',
+                                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                      }}
+                                    >
+                                      {formatMoney(curr, meta.taxableSubtotal)} taxable × {formatCompactNum(meta.taxRatePct)}%
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                                    {formatMoney(curr, meta.taxAmount)}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div
                                 style={{
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   alignItems: 'center',
                                   gap: '12px',
                                   padding: '9px 12px',
-                                  background: isTotalRow ? '#eff6ff' : '#f8fafc',
+                                  background: '#eff6ff',
                                   borderRadius: '8px',
-                                  borderLeft: isTotalRow ? '3px solid #2563eb' : '3px solid #cbd5e1',
+                                  borderLeft: '3px solid #2563eb',
                                 }}
                               >
                                 <div>
-                                  <div style={{ fontSize: '12px', fontWeight: isTotalRow ? 900 : 700, color: isTotalRow ? '#1e3a8a' : '#334155' }}>
-                                    {title}
+                                  <div style={{ fontSize: '12px', fontWeight: 900, color: '#1e3a8a', textTransform: 'capitalize' }}>
+                                    Total {meta.count}× {vehicleTitle} Allocation
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', marginTop: '2px' }}>
-                                    {math}
+                                  <div
+                                    style={{
+                                      fontSize: '10.5px',
+                                      color: '#3b82f6',
+                                      fontWeight: 700,
+                                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                      marginTop: '1px',
+                                    }}
+                                  >
+                                    {meta.count > 1
+                                      ? `${meta.count} vehicles × ${formatMoney(curr, meta.unitGross)} / unit`
+                                      : `1 vehicle gross total`}
                                   </div>
                                 </div>
-                                <div style={{ fontSize: '13.5px', fontWeight: 900, color: isTotalRow ? '#1d4ed8' : '#0f172a', whiteSpace: 'nowrap' }}>
-                                  {formattedTotal}
+                                <div style={{ fontSize: '14px', fontWeight: 900, color: '#1d4ed8', whiteSpace: 'nowrap' }}>
+                                  {formatMoney(curr, meta.grossTotal)}
                                 </div>
                               </div>
-                            )
-                          }
+                            </>
+                          ) : (
+                            /* Legacy fallback logs — skips duplicated Engine header lines */
+                            meta.logs.map((log: string, lIdx: number) => {
+                              const isInit = log.includes('initialized for')
+                              const isDayHeader = log.includes('Engine:')
+                              const isCharge = log.includes('-> Charged')
 
-                          return (
-                            <div key={lIdx} style={{ fontSize: '11.5px', color: '#475569', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '4px 8px', background: '#f8fafc', borderRadius: '6px' }}>
-                              {log}
-                            </div>
-                          )
-                        })}
+                              if (isInit || isDayHeader) return null
+
+                              if (isCharge) {
+                                const parts = log.split('-> Charged')
+                                const title = parts[0].replace(/\[Day \d+\]/, '').trim()
+                                const mathParts = parts[1].split('=')
+                                const math = (mathParts[0] || '').trim().replace('@', '×')
+                                const rawTotalStr = (mathParts[1] || '').trim()
+                                const numericTotal = parseFloat(rawTotalStr.replace(/[^0-9.-]/g, ''))
+                                const formattedTotal = !isNaN(numericTotal) ? formatMoney(curr, numericTotal) : rawTotalStr
+                                const isTotalRow = title.toLowerCase().startsWith('total ')
+
+                                return (
+                                  <div
+                                    key={lIdx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      gap: '12px',
+                                      padding: '8px 11px',
+                                      background: isTotalRow ? '#eff6ff' : '#f8fafc',
+                                      borderRadius: '8px',
+                                      borderLeft: isTotalRow ? '3px solid #2563eb' : '3px solid #cbd5e1',
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ fontSize: '12px', fontWeight: isTotalRow ? 900 : 700, color: isTotalRow ? '#1e3a8a' : '#334155' }}>
+                                        {title}
+                                      </div>
+                                      <div style={{ fontSize: '10.5px', color: '#64748b', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', marginTop: '2px' }}>
+                                        {math}
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: '13px', fontWeight: 900, color: isTotalRow ? '#1d4ed8' : '#0f172a', whiteSpace: 'nowrap' }}>
+                                      {formattedTotal}
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              return (
+                                <div key={lIdx} style={{ fontSize: '11.5px', color: '#475569', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '4px 8px', background: '#f8fafc', borderRadius: '6px' }}>
+                                  {log}
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
 
-              {/* Modal Footer — Close pinned Left, Summary Total pinned Right */}
-              <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              {/* Modal Footer — Close pinned Left, Combined Fleet Summary pinned Right */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: '12px 20px',
+                  borderTop: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => setEngineModalOpen(false)}
@@ -820,9 +1350,21 @@ export function VehicleDetailsPanel({
                 >
                   Close
                 </button>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginRight: '8px' }}>Combined Fleet Total:</span>
-                  <span style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a' }}>{formatMoney(curr, totalGrossPrice)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {totalTaxAmount > 0 && (
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b' }}>
+                      Net: <strong style={{ color: '#334155' }}>{formatMoney(curr, totalNetSubtotal)}</strong> · {primaryTaxLabel}:{' '}
+                      <strong style={{ color: '#334155' }}>{formatMoney(curr, totalTaxAmount)}</strong>
+                    </span>
+                  )}
+                  <div>
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', marginRight: '6px' }}>
+                      Combined Fleet Total:
+                    </span>
+                    <span style={{ fontSize: '15.5px', fontWeight: 900, color: '#0f172a' }}>
+                      {formatMoney(curr, totalGrossPrice)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
