@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ClientHeader } from "@/components/layout/client-header"
+import { PortalAccessGuard } from "@/components/layout/portal-access-guard"
 import { BookingPanel } from "@/components/booking/booking-panel"
 import { LiveMapWrapper } from "@/components/map/live-map-wrapper"
 import { VehicleDetailsPanel } from "@/components/booking/vehicle-details-panel"
@@ -89,6 +90,7 @@ export default function Home() {
       </div>
 
       {/* 2. MAIN SPLIT CONTENT */}
+      <PortalAccessGuard>
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative p-3 md:p-4 gap-3 md:gap-4 bg-slate-50 dark:bg-slate-900">
         
         {/* LEFT BLOCK — Booking Panel */}
@@ -155,6 +157,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      </PortalAccessGuard>
     </div>
   )
 }

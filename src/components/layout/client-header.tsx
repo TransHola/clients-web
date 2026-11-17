@@ -6,6 +6,7 @@ import Link from "next/link"
 import {
   Bell,
   User,
+  Users,
   ChevronDown,
   Building2,
   FileText,
@@ -26,6 +27,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  resolveEffectivePortalAccess,
+  type PortalPermissionId,
+} from "@/lib/corporate-rbac"
 
 function decodeJwtPayloadBrowser(token: string): any | null {
   try {
@@ -82,9 +87,12 @@ function readInitialBrowserSession(): { user: any; profile: any } | null {
       first_name: meta.first_name || "",
       last_name: meta.last_name || "",
       role: meta.role || "client",
+      permissions: Array.isArray(meta.permissions) ? meta.permissions : [],
       preferences: {
         clientType: meta.client_type || (meta.company_name ? "Corporate" : "Individual"),
         companyName: meta.company_name || null,
+        organizationId: meta.organization_id || claims.sub,
+        corporateRole: meta.corporate_role || undefined,
       },
     }
     return { user, profile }
@@ -93,12 +101,17 @@ function readInitialBrowserSession(): { user: any; profile: any } | null {
   }
 }
 
-const PORTAL_NAV_LINKS = [
-  { href: "/", label: "Book Service", icon: PlusCircle },
-  { href: "/quotations", label: "Quotations", icon: FileText },
-  { href: "/bookings", label: "My Bookings", icon: CalendarCheck },
-  { href: "/billing", label: "Billing", icon: CreditCard },
-  { href: "/support", label: "Support", icon: Headphones },
+const PORTAL_NAV_LINKS: {
+  href: string
+  label: string
+  icon: any
+  permission: PortalPermissionId
+}[] = [
+  { href: "/", label: "Book Service", icon: PlusCircle, permission: "portal.book_service" },
+  { href: "/quotations", label: "Quotations", icon: FileText, permission: "portal.quotations.view" },
+  { href: "/bookings", label: "My Bookings", icon: CalendarCheck, permission: "portal.bookings.manage" },
+  { href: "/billing", label: "Billing", icon: CreditCard, permission: "portal.billing.view" },
+  { href: "/support", label: "Support", icon: Headphones, permission: "portal.support.access" },
 ]
 
 export function ClientHeader() {
@@ -109,14 +122,7 @@ export function ClientHeader() {
   const [profile, setProfile] = React.useState<any>(() => readInitialBrowserSession()?.profile ?? null)
   const [authChecked, setAuthChecked] = React.useState<boolean>(() => Boolean(readInitialBrowserSession()?.user))
 
-  React.useEffect(() => {
-    const initial = readInitialBrowserSession()
-    if (initial?.user) {
-      setUser(initial.user)
-      setProfile((prev: any) => prev || initial.profile)
-      setAuthChecked(true)
-    }
-
+  const refreshSession = React.useCallback(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 2800)
 
@@ -146,27 +152,64 @@ export function ClientHeader() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [pathname])
+  }, [])
+
+  React.useEffect(() => {
+    const initial = readInitialBrowserSession()
+    if (initial?.user) {
+      setUser(initial.user)
+      setProfile((prev: any) => prev || initial.profile)
+      setAuthChecked(true)
+    }
+    const cleanup = refreshSession()
+    const onProfileUpdated = () => refreshSession()
+    window.addEventListener("th:profile-updated", onProfileUpdated)
+    return () => {
+      cleanup()
+      window.removeEventListener("th:profile-updated", onProfileUpdated)
+    }
+  }, [pathname, refreshSession])
+
+  const effectiveAccess = React.useMemo(
+    () => resolveEffectivePortalAccess(profile, user),
+    [profile, user]
+  )
+
+  const visibleNavLinks = React.useMemo(() => {
+    if (!effectiveAccess.isCorporate || effectiveAccess.isOwner) {
+      return PORTAL_NAV_LINKS
+    }
+    return PORTAL_NAV_LINKS.filter((l) => effectiveAccess.permissions.includes(l.permission))
+  }, [effectiveAccess])
+
+  const companyName = (
+    profile?.preferences?.companyName ||
+    user?.user_metadata?.company_name ||
+    ""
+  ).trim()
 
   const displayName = React.useMemo(() => {
-    const company = profile?.preferences?.companyName || user?.user_metadata?.company_name
     const full = profile?.full_name || user?.user_metadata?.full_name
     const firstLast = [
-      profile?.first_name || user?.user_metadata?.first_name,
-      profile?.last_name || user?.user_metadata?.last_name,
+      profile?.preferences?.firstName || profile?.first_name || user?.user_metadata?.first_name,
+      profile?.preferences?.lastName || profile?.last_name || user?.user_metadata?.last_name,
     ]
       .filter(Boolean)
       .join(" ")
       .trim()
     const emailFallback = (profile?.email || user?.email || "").split("@")[0]
-    return (company || full || firstLast || emailFallback || "Client Account").trim()
-  }, [profile, user])
+    if (effectiveAccess.isCorporate && effectiveAccess.isOwner && companyName) {
+      return companyName
+    }
+    return (firstLast || full || companyName || emailFallback || "Client Account").trim()
+  }, [profile, user, effectiveAccess, companyName])
 
   const displayEmail = profile?.email || user?.email || ""
-  const clientType =
-    profile?.preferences?.clientType ||
-    user?.user_metadata?.client_type ||
-    (profile?.preferences?.companyName ? "Corporate" : "Individual")
+  const badgeSubtitle = React.useMemo(() => {
+    if (!effectiveAccess.isCorporate) return "Individual"
+    if (effectiveAccess.isOwner) return "Corporate • Owner"
+    return effectiveAccess.roleLabel
+  }, [effectiveAccess])
 
   const avatarInitials = React.useMemo(() => {
     const parts = displayName.split(/\s+/).filter(Boolean)
@@ -222,9 +265,9 @@ export function ClientHeader() {
             </div>
           </Link>
 
-          {user && (
+          {user && visibleNavLinks.length > 0 && (
             <nav className="hidden md:flex items-center gap-1.5 text-sm font-semibold ml-2 bg-slate-100/80 dark:bg-slate-900/80 p-1 rounded-xl border border-slate-200/70 dark:border-slate-800">
-              {PORTAL_NAV_LINKS.map((link) => {
+              {visibleNavLinks.map((link) => {
                 const Icon = link.icon
                 const isActive =
                   link.href === "/"
@@ -258,7 +301,13 @@ export function ClientHeader() {
                 variant="ghost"
                 size="icon"
                 className="text-muted-foreground hover:text-foreground relative rounded-xl"
-                onClick={() => router.push("/bookings")}
+                onClick={() =>
+                  router.push(
+                    effectiveAccess.permissions.includes("portal.bookings.manage")
+                      ? "/bookings"
+                      : "/profile"
+                  )
+                }
                 title="Booking & Dispatch Notifications"
               >
                 <Bell className="h-5 w-5" />
@@ -274,13 +323,13 @@ export function ClientHeader() {
                       {avatarInitials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="flex flex-col items-start hidden sm:flex text-left max-w-[180px]">
+                  <span className="flex flex-col items-start hidden sm:flex text-left max-w-[195px]">
                     <span className="text-xs font-bold leading-none text-slate-900 dark:text-slate-100 truncate w-full">
                       {displayName}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider mt-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      {clientType}
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider mt-1 truncate max-w-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                      {badgeSubtitle}
                     </span>
                   </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground ml-0.5" />
@@ -292,31 +341,55 @@ export function ClientHeader() {
                         <span className="text-sm font-bold leading-none text-foreground truncate">
                           {displayName}
                         </span>
-                        <span className="text-xs text-muted-foreground leading-none mt-1 truncate">
+                        {effectiveAccess.isCorporate && companyName && companyName !== displayName && (
+                          <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 truncate">
+                            {companyName}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground leading-none mt-0.5 truncate">
                           {displayEmail}
                         </span>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/")}>
-                      <PlusCircle className="w-4 h-4 text-blue-600" /> Book New Charter
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/quotations")}>
-                      <FileText className="w-4 h-4 text-muted-foreground" /> Saved Quotations
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/bookings")}>
-                      <CalendarCheck className="w-4 h-4 text-muted-foreground" /> My Bookings
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/billing")}>
-                      <CreditCard className="w-4 h-4 text-muted-foreground" /> Billing & Invoices
-                    </DropdownMenuItem>
+                    {effectiveAccess.permissions.includes("portal.book_service") && (
+                      <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/")}>
+                        <PlusCircle className="w-4 h-4 text-blue-600" /> Book Service
+                      </DropdownMenuItem>
+                    )}
+                    {effectiveAccess.permissions.includes("portal.quotations.view") && (
+                      <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/quotations")}>
+                        <FileText className="w-4 h-4 text-muted-foreground" /> Quotations
+                      </DropdownMenuItem>
+                    )}
+                    {effectiveAccess.permissions.includes("portal.bookings.manage") && (
+                      <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/bookings")}>
+                        <CalendarCheck className="w-4 h-4 text-muted-foreground" /> My Bookings
+                      </DropdownMenuItem>
+                    )}
+                    {effectiveAccess.permissions.includes("portal.billing.view") && (
+                      <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/billing")}>
+                        <CreditCard className="w-4 h-4 text-muted-foreground" /> Billing & Invoices
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/profile")}>
-                      <Building2 className="w-4 h-4 text-muted-foreground" /> Entity Profile
+                      {effectiveAccess.isCorporate ? (
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <User className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      {effectiveAccess.isCorporate ? "Corporate & Personal Profile" : "My Profile & Settings"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 rounded-lg" onClick={() => router.push("/profile")}>
-                      <User className="w-4 h-4 text-muted-foreground" /> Personal Settings
-                    </DropdownMenuItem>
+                    {effectiveAccess.isCorporate && (
+                      <DropdownMenuItem
+                        className="gap-2.5 cursor-pointer py-2 rounded-lg"
+                        onClick={() => router.push("/profile?tab=team")}
+                      >
+                        <Users className="w-4 h-4 text-indigo-600" />
+                        {effectiveAccess.canManageTeam ? "Team & Access Control" : "Team & My Permissions"}
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -341,9 +414,9 @@ export function ClientHeader() {
       </div>
 
       {/* Mobile Authenticated Navigation Bar */}
-      {user && (
+      {user && visibleNavLinks.length > 0 && (
         <div className="flex md:hidden items-center gap-1 overflow-x-auto px-3 py-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/90 dark:bg-slate-900/80 no-scrollbar">
-          {PORTAL_NAV_LINKS.map((link) => {
+          {visibleNavLinks.map((link) => {
             const Icon = link.icon
             const isActive =
               link.href === "/"

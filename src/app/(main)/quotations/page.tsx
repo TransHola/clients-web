@@ -59,10 +59,12 @@ export default function QuotationsPage() {
         const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : []
 
         if (currentUserId) {
+          const orgId = authUser?.user_metadata?.organization_id
+          const orgClause = orgId && orgId !== currentUserId ? `,user_id.eq.${orgId},customer_id.eq.${orgId}` : ''
           if (savedRefs.length > 0) {
-            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId},booking_ref.in.(${savedRefs.join(',')})`)
+            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}${orgClause},booking_ref.in.(${savedRefs.join(',')})`)
           } else {
-            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}`)
+            query = query.or(`user_id.eq.${currentUserId},customer_id.eq.${currentUserId}${orgClause}`)
           }
         } else if (savedRefs.length > 0) {
           query = query.in('booking_ref', savedRefs)

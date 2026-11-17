@@ -1,4 +1,5 @@
-import { ClientHeader } from "@/components/layout/client-header"
+import { ClientHeader } from '@/components/layout/client-header'
+import { PortalAccessGuard } from '@/components/layout/portal-access-guard'
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,7 +8,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <ClientHeader />
       </div>
       <main style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
-        {children}
+        <PortalAccessGuard>{children}</PortalAccessGuard>
       </main>
     </div>
   )

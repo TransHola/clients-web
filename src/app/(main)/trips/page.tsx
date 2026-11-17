@@ -115,7 +115,9 @@ export default function TripsPage() {
         .order('created_at', { ascending: false })
 
       if (user) {
-        query = query.or(`user_id.eq.${user.id},customer_id.eq.${user.id}`)
+        const orgId = user?.user_metadata?.organization_id
+        const orgClause = orgId && orgId !== user.id ? `,user_id.eq.${orgId},customer_id.eq.${orgId}` : ''
+        query = query.or(`user_id.eq.${user.id},customer_id.eq.${user.id}${orgClause}`)
       } else {
         // If guest, check localStorage for recent booking refs
         const savedRefsStr = typeof window !== 'undefined' ? localStorage.getItem('transhola_recent_booking_refs') : null

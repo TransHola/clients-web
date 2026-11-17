@@ -151,6 +151,16 @@ export function buildSupabaseUserObject(input: ClientUserBuildInput) {
       full_name: fullName,
       company_name: companyName,
       client_type: clientType,
+      organization_id: prefs.organizationId || meta.organization_id || input.id,
+      corporate_role:
+        prefs.corporateRole ||
+        meta.corporate_role ||
+        (clientType === 'Corporate' ? 'owner' : 'individual'),
+      permissions: Array.isArray(input.profile?.permissions)
+        ? input.profile.permissions
+        : Array.isArray(meta.permissions)
+          ? meta.permissions
+          : [],
       phone,
       role,
     },
