@@ -220,31 +220,122 @@ export async function register(formData: FormData) {
 }
 
 export async function resetPassword(formData: FormData) {
-  const email = formData.get('email') as string
-  const supabase = await createClient()
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://client.transhola.com'}/update-password`,
-  })
-
-  if (error) {
-    return { error: error.message }
+  const email = ((formData.get('email') as string) || '').trim().toLowerCase()
+  if (!email || !email.includes('@')) {
+    return { error: 'Please enter a valid email address.' }
   }
 
-  return { success: true }
+  const { createRecoveryBundle } = await import('@/lib/auth/passwordRecoveryToken')
+  const bundle = createRecoveryBundle(email, 15)
+  const siteBase = process.env.NEXT_PUBLIC_SITE_URL || 'https://client.transhola.com'
+  const resetUrl = `${siteBase}/update-password?token=${encodeURIComponent(bundle.linkToken)}&email=${encodeURIComponent(email)}`
+
+  const adminClient = createAdminClient()
+  const { data: profile } = await (adminClient as any)
+    .from('profiles')
+    .select('full_name')
+    .ilike('email', email)
+    .maybeSingle()
+
+  const dispatchEndpoints = [
+    process.env.SUPERADMIN_INTERNAL_URL
+      ? `${process.env.SUPERADMIN_INTERNAL_URL}/api/auth-recovery-email`
+      : 'http://superadmin-service:3000/api/auth-recovery-email',
+    'https://admin.transhola.com/api/auth-recovery-email',
+  ]
+
+  for (const endpoint of dispatchEndpoints) {
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          customerName: profile?.full_name || email.split('@')[0],
+          otpCode: bundle.otpCode,
+          resetUrl,
+          expiresMinutes: 15,
+        }),
+        signal: AbortSignal.timeout(2800),
+      })
+      if (resp.ok) break
+    } catch {}
+  }
+
+  return {
+    success: true,
+    email,
+    challengeToken: bundle.challengeToken,
+  }
 }
 
 export async function updatePassword(formData: FormData) {
-  const password = formData.get('password') as string
-  const supabase = await createClient()
-  const { error } = await supabase.auth.updateUser({
-    password,
-  })
+  const password = (formData.get('password') as string) || ''
+  const token = ((formData.get('token') as string) || '').trim()
 
-  if (error) {
-    return { error: error.message }
+  if (password.length < 8) {
+    return { error: 'Password must be at least 8 characters long.' }
   }
 
-  redirect('/profile')
+  let targetEmail = ''
+  if (token) {
+    const { verifyResetLinkToken } = await import('@/lib/auth/passwordRecoveryToken')
+    const check = verifyResetLinkToken(token)
+    if (!check.valid || !check.email) {
+      return { error: check.error || 'Invalid or expired password reset link.' }
+    }
+    targetEmail = check.email
+  } else {
+    const cookieStore = await cookies()
+    const resolved = await resolveVerifiedUserFromCookiesOrHeader(cookieStore.getAll())
+    if (!resolved?.user?.email) {
+      return { error: 'Session expired. Please request a new password reset link.' }
+    }
+    targetEmail = resolved.user.email
+  }
+
+  const adminClient = createAdminClient()
+  const { data: updatedUser, error } = await (adminClient as any).rpc(
+    'update_client_password_by_email',
+    {
+      p_email: targetEmail,
+      p_new_password: password,
+    }
+  )
+
+  if (error || updatedUser?.error) {
+    return { error: updatedUser?.error || error?.message || 'Unable to update password.' }
+  }
+
+  let hostHeader: string | null = null
+  let protoHeader: string | null = 'https'
+  try {
+    const reqHeaders = await headers()
+    hostHeader = reqHeaders.get('x-forwarded-host') || reqHeaders.get('host')
+    protoHeader = reqHeaders.get('x-forwarded-proto') || 'https'
+  } catch {}
+
+  const { data: profile } = await (adminClient as any)
+    .from('profiles')
+    .select('*')
+    .eq('id', updatedUser.id)
+    .maybeSingle()
+
+  const bundle = await createClientSessionBundle({
+    id: updatedUser.id,
+    email: updatedUser.email || targetEmail,
+    user_metadata: updatedUser.user_metadata || {},
+    app_metadata: updatedUser.app_metadata || {},
+    profile,
+  })
+
+  const cookieStore = await cookies()
+  const cookieOpts = buildSessionCookieOptions(hostHeader, protoHeader)
+  cookieStore.set(CLIENT_SESSION_COOKIE, bundle.accessToken, cookieOpts)
+  cookieStore.set(SUPABASE_SSR_COOKIE, bundle.ssrCookieValue, cookieOpts)
+
+  revalidatePath('/', 'layout')
+  redirect('/')
 }
 
 export async function logout() {
