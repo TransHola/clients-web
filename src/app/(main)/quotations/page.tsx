@@ -33,7 +33,18 @@ export default function QuotationsPage() {
       try {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
-        const authUser = session?.user || (await supabase.auth.getUser()).data?.user
+        let authUser: any = session?.user || (await supabase.auth.getUser()).data?.user
+        if (!authUser) {
+          try {
+            const meRes = await fetch('/api/auth/me', { credentials: 'include' })
+            if (meRes.ok) {
+              const meJson = await meRes.json()
+              if (meJson?.authenticated && meJson?.user) {
+                authUser = meJson.user
+              }
+            }
+          } catch {}
+        }
         const currentUserId = authUser?.id
 
         const { data: statusData } = await supabase.from('booking_statuses').select('id').eq('code', 'quotation').maybeSingle()
@@ -256,11 +267,21 @@ export default function QuotationsPage() {
       
       {/* LEFT PANE: List */}
       <div className={`flex flex-col shrink-0 transition-all duration-500 ease-in-out ${hasActivePanel ? 'w-full lg:w-[420px] xl:w-[480px] hidden lg:flex' : 'w-full max-w-7xl mx-auto'}`}>
-        <div className="mb-8">
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">My Quotations</h1>
-          <p className="text-sm text-slate-500 mt-2 font-medium">
-            Review and confirm your pending trip quotes before they expire.
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">My Quotations</h1>
+            <p className="text-sm text-slate-500 mt-2 font-medium">
+              Review and confirm your pending trip quotes before they expire.
+            </p>
+          </div>
+          {quotes.length > 0 && (
+            <Button
+              onClick={() => router.push('/?intent=quotation')}
+              className="font-bold px-5 h-10 rounded-xl bg-slate-900 text-white hover:bg-slate-800 shrink-0 cursor-pointer"
+            >
+              Get a Free Quotation
+            </Button>
+          )}
         </div>
         
         {isLoading ? (
@@ -317,9 +338,14 @@ export default function QuotationsPage() {
               <div className="text-center py-24 border-2 border-dashed border-slate-200 rounded-2xl bg-white w-full max-w-2xl mx-auto">
                 <FileText className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                 <p className="font-bold text-slate-900 text-lg">No quotations yet</p>
-                <p className="text-sm text-slate-500 mt-2">Book a service from the home page to get started.</p>
-                <Button onClick={() => router.push('/')} className="mt-8 font-bold px-8 py-6 rounded-xl bg-slate-900 text-white hover:bg-slate-800">
-                  Book a Ride
+                <p className="text-sm text-slate-500 mt-2">
+                  Configure your route and fleet to receive an instant, free price quotation.
+                </p>
+                <Button
+                  onClick={() => router.push('/?intent=quotation')}
+                  className="mt-8 font-bold px-8 py-6 rounded-xl bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+                >
+                  Get a Free Quotation
                 </Button>
               </div>
             )}

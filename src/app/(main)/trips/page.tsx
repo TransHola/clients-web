@@ -88,9 +88,20 @@ export default function TripsPage() {
       setLoading(true)
       const supabase = createClient()
 
-      // Fetch session or user
+      // Fetch session or user (including HTTP-only .transhola.com session cookie via /api/auth/me)
       const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user || (await supabase.auth.getUser()).data.user
+      let user: any = session?.user || (await supabase.auth.getUser()).data.user
+      if (!user) {
+        try {
+          const meRes = await fetch('/api/auth/me', { credentials: 'include' })
+          if (meRes.ok) {
+            const meJson = await meRes.json()
+            if (meJson?.authenticated && meJson?.user) {
+              user = meJson.user
+            }
+          }
+        } catch {}
+      }
       setCurrentUser(user || null)
 
       // Get status maps
@@ -325,6 +336,12 @@ export default function TripsPage() {
               <List className="w-4 h-4" />
             </Button>
           </div>
+          <Button
+            onClick={() => router.push('/?intent=booking')}
+            className="h-9 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shrink-0 cursor-pointer"
+          >
+            Book a Ride
+          </Button>
         </div>
       </div>
 
@@ -446,13 +463,16 @@ function BookingList({
 
   if (bookings.length === 0) {
     return (
-      <div className="text-center py-20 border-2 border-dashed rounded-2xl bg-slate-50/50">
-        <Car className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-        <p className="font-bold text-foreground">No bookings found in this category</p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-          Need a transfer? Configure and reserve your private chauffeur instantly.
+      <div className="text-center py-24 border-2 border-dashed border-slate-200 rounded-2xl bg-white w-full max-w-2xl mx-auto">
+        <Car className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+        <p className="font-bold text-slate-900 text-lg">No bookings yet</p>
+        <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
+          Need transport for an upcoming activity or transfer? Reserve your verified fleet and chauffeur instantly.
         </p>
-        <Button size="sm" onClick={() => router.push('/')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs">
+        <Button
+          onClick={() => router.push('/?intent=booking')}
+          className="mt-8 font-bold px-8 py-6 rounded-xl bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+        >
           Book a Ride
         </Button>
       </div>
