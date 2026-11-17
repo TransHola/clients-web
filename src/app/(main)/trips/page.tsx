@@ -426,12 +426,12 @@ export default function TripsPage() {
             <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
               Are you sure you want to cancel this booking? This action cannot be undone and cancellation fees may apply depending on your policy.
             </p>
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1 font-bold rounded-xl" onClick={() => setCancellingId(null)} disabled={isCancelling}>
-                Go Back
+            <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+              <Button variant="outline" className="px-5 font-bold rounded-xl" onClick={() => setCancellingId(null)} disabled={isCancelling}>
+                Cancel
               </Button>
-              <Button className="flex-1 font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center" onClick={confirmCancellation} disabled={isCancelling}>
-                {isCancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, Cancel"}
+              <Button className="px-6 font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center" onClick={confirmCancellation} disabled={isCancelling}>
+                {isCancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, Cancel Booking"}
               </Button>
             </div>
           </div>

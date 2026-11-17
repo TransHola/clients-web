@@ -181,7 +181,7 @@ function dispatchAirlineBookingEmailClient(params: {
       allowancesCost: params.option?.allowancesCost,
       subtotal: params.option?.subtotal,
       taxAmount: params.option?.taxAmount,
-      paymentMethod: params.paymentMethod || 'Card Checkout (Stripe)',
+      paymentMethod: params.paymentMethod || 'Encrypted Card Checkout',
       paymentStatus: 'PAID',
       customerName: params.passengerName || 'Lead Passenger',
       passengerName: params.isThirdParty && params.thirdPartyInfo
@@ -1357,9 +1357,9 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
       </div>
       <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Payment Error</p>
       <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>{errorMessage || "Something went wrong on our end."}</p>
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', width: '100%', maxWidth: '280px' }}>
         <button onClick={onBack} style={{ padding: '10px 22px', borderRadius: '12px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer' }}>Cancel</button>
+        <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
       </div>
     </div>
   )
@@ -1598,7 +1598,7 @@ function MockCheckoutForm({ option, bookingDetails, currency = "EUR", onBack, on
                     <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px' }}>Recommended</span>
                   </span>
                   <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0', lineHeight: 1.4 }}>
-                    Skip entering card details next time. Encrypted and saved securely via Stripe PCI-DSS Level 1 tokenization.
+                    Skip entering card details next time. Encrypted and saved securely via PCI-DSS Level 1 vault tokenization.
                   </p>
                 </div>
               </label>
@@ -1769,7 +1769,7 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
         option,
         bookingDetails,
         currency,
-        paymentMethod: 'Card Checkout (Stripe Verified)',
+        paymentMethod: 'Encrypted Card Checkout',
         isThirdParty: Boolean(isThirdParty || bookingDetails?.isThirdParty),
         thirdPartyInfo: thirdPartyInfo || bookingDetails?.thirdPartyInfo,
       });
@@ -1801,9 +1801,9 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
       </div>
       <p style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: 0 }}>Payment Error</p>
       <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>{errorMessage || "Something went wrong on our end."}</p>
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', width: '100%', maxWidth: '280px' }}>
         <button onClick={onBack} style={{ padding: '10px 22px', borderRadius: '12px', background: 'white', color: '#0f172a', fontWeight: 700, fontSize: '13px', border: '1.5px solid #e2e8f0', cursor: 'pointer' }}>Cancel</button>
+        <button onClick={() => setPayState("idle")} style={{ padding: '10px 22px', borderRadius: '12px', background: '#0f172a', color: 'white', fontWeight: 700, fontSize: '13px', border: 'none', cursor: 'pointer' }}>Retry</button>
       </div>
     </div>
   )
@@ -2024,7 +2024,7 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
                     <span style={{ fontSize: '10px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px' }}>Recommended</span>
                   </span>
                   <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0', lineHeight: 1.4 }}>
-                    Never re-enter card details again. Encrypted and saved securely via Stripe (PCI DSS Level 1).
+                    Never re-enter card details again. Encrypted and saved securely via PCI-DSS Level 1 tokenization.
                   </p>
                 </div>
               </label>
@@ -2050,7 +2050,7 @@ function CheckoutForm({ option, bookingDetails, currency = "EUR", onBack, onConf
             </>
           )}
         </button>
-        <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', fontWeight: 600, margin: '9px 0 0' }}>🔒 Secured by Stripe · 256-bit SSL</p>
+        <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', fontWeight: 600, margin: '9px 0 0' }}>🔒 Bank-Grade PCI-DSS Level 1 · 256-bit SSL</p>
       </div>
     </form>
   )

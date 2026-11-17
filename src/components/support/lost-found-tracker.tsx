@@ -625,12 +625,12 @@ export function LostFoundTracker() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t">
+            <div className="flex items-center justify-between gap-3 pt-4 border-t">
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 onClick={() => setShowAddForm(false)}
-                className="h-11 rounded-xl text-xs font-bold cursor-pointer"
+                className="h-11 px-5 rounded-xl text-xs font-bold cursor-pointer"
               >
                 Cancel
               </Button>

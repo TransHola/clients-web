@@ -150,6 +150,7 @@ function AddPaymentMethodForm({ onSuccess, onCancel }: { onSuccess: () => void, 
         </label>
         <div className="p-4 border rounded-2xl bg-slate-50/50 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all shadow-inner">
           <CardElement options={{
+            disableLink: true,
             style: {
               base: {
                 fontSize: '15px',
@@ -169,10 +170,10 @@ function AddPaymentMethodForm({ onSuccess, onCancel }: { onSuccess: () => void, 
 
       <div className="flex items-center gap-2 p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-blue-800 font-medium">
         <Lock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-        <span>Your card is tokenized directly with Stripe. Transhola never stores your raw card numbers.</span>
+        <span>Your card is tokenized using PCI-DSS Level 1 bank-grade encryption. TransHola never stores your raw card numbers.</span>
       </div>
 
-      <DialogFooter className="gap-2 sm:gap-0">
+      <DialogFooter className="pt-2">
         <Button type="button" variant="outline" onClick={onCancel} className="rounded-xl text-xs font-bold h-11 px-5 cursor-pointer">
           Cancel
         </Button>
@@ -624,7 +625,7 @@ export default function BillingPage() {
                 paymentsList.push({
                   id: `pay-${b.id}`,
                   created_at: b.created_at,
-                  provider: 'Stripe Secure',
+                  provider: 'Encrypted Card Vault',
                   status: 'succeeded',
                   amount: amount,
                   currency: b.currency || 'EUR',
@@ -760,7 +761,7 @@ export default function BillingPage() {
       setPayments(prev => [{
         id: `pay-${Date.now()}`,
         created_at: new Date().toISOString(),
-        provider: 'Stripe Secure',
+        provider: 'Encrypted Card Vault',
         status: 'succeeded',
         amount: Number(payingInvoice.total_amount),
         currency: payingInvoice.currency || 'EUR',
@@ -1357,7 +1358,7 @@ export default function BillingPage() {
                 </div>
                 <div>
                   <h4 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">Add New Card</h4>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Instant verification via Stripe</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Instant 3D Secure card verification</p>
                 </div>
               </div>
             )}
@@ -1372,12 +1373,12 @@ export default function BillingPage() {
               <div>
                 <p className="font-black text-slate-900">Bank-Grade 256-Bit SSL Encryption</p>
                 <p className="text-muted-foreground text-[11px] mt-0.5">
-                  All credit card data is securely tokenized through Stripe. PCI-DSS Level 1 certified infrastructure.
+                  All credit card data is protected with hardware-grade tokenization on PCI-DSS Level 1 certified infrastructure.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 text-slate-400 font-bold text-xs uppercase tracking-wider">
-              <span>Stripe Verified</span>
+              <span>PCI-DSS Level 1</span>
               <span>•</span>
               <span>3D Secure 2.0</span>
             </div>
@@ -1406,7 +1407,7 @@ export default function BillingPage() {
                     <tr>
                       <th className="py-3.5 px-6">Transaction ID</th>
                       <th className="py-3.5 px-6">Date & Time</th>
-                      <th className="py-3.5 px-6">Payment Provider</th>
+                      <th className="py-3.5 px-6">Settlement Channel</th>
                       <th className="py-3.5 px-6">Status</th>
                       <th className="py-3.5 px-6 text-right">Amount</th>
                       <th className="py-3.5 px-6 text-right">Receipt</th>
@@ -1423,7 +1424,7 @@ export default function BillingPage() {
                         </td>
                         <td className="py-4 px-6">
                           <span className="flex items-center gap-1.5 font-bold text-slate-700">
-                            <Lock className="w-3 h-3 text-slate-400" /> {p.provider || "Stripe"}
+                            <Lock className="w-3 h-3 text-slate-400" /> {(!p.provider || /stripe|paytabs|adyen|checkout/i.test(String(p.provider))) ? "Encrypted Card Vault" : p.provider}
                           </span>
                         </td>
                         <td className="py-4 px-6">
@@ -1761,7 +1762,7 @@ export default function BillingPage() {
                   <span>Authorized through Super Admin Post-Service Payment Terms.</span>
                 </div>
 
-                <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <DialogFooter className="pt-2">
                   <Button
                     type="button"
                     variant="outline"

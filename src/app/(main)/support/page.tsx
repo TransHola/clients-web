@@ -703,12 +703,12 @@ export default function SupportPage() {
                 </div>
 
                 {/* Submit Button */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                <div className="flex items-center justify-between gap-3 pt-4 border-t">
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     onClick={() => setShowAddTicket(false)}
-                    className="h-11 rounded-xl text-xs font-bold cursor-pointer"
+                    className="h-11 px-5 rounded-xl text-xs font-bold cursor-pointer"
                   >
                     Cancel
                   </Button>
@@ -1058,7 +1058,7 @@ export default function SupportPage() {
               )}
             </div>
 
-            <div className="p-3 border-t bg-slate-50 flex justify-end">
+            <div className="p-3 border-t bg-slate-50 flex justify-start">
               <Button
                 variant="ghost"
                 size="sm"

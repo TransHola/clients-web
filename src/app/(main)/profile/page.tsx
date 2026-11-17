@@ -2094,12 +2094,12 @@ function ProfileInner() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setUserModalOpen(false)}
-                  className="h-10 rounded-xl font-bold cursor-pointer"
+                  className="h-10 px-5 rounded-xl font-bold cursor-pointer"
                 >
                   Cancel
                 </Button>

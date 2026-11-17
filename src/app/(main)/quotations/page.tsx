@@ -229,11 +229,11 @@ export default function QuotationsPage() {
                  <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
                    Modifying this route will discard your currently saved quotation parameters. The system will recalculate live rates.
                  </p>
-                 <div className="flex gap-3">
-                   <Button variant="outline" className="flex-1 font-bold rounded-xl" onClick={() => setShowEditWarning(false)}>
+                 <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                   <Button variant="outline" className="px-5 font-bold rounded-xl" onClick={() => setShowEditWarning(false)}>
                      Cancel
                    </Button>
-                   <Button className="flex-1 font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white" onClick={() => router.push(`/?quote=${viewingTimeline.db_id}`)}>
+                   <Button className="px-6 font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white" onClick={() => router.push(`/?quote=${viewingTimeline.db_id}`)}>
                      Proceed
                    </Button>
                  </div>
