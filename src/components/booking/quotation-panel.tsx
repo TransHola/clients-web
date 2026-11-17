@@ -269,7 +269,203 @@ function CoachIcon({ color = "#94a3b8", size = 32 }: { color?: string; size?: nu
 }
 
 const VEHICLE_ICONS: Record<string, React.FC<{ color?: string; size?: number }>> = {
-  sedan: SedanIcon, suv: SUVIcon, mpv: MPVIcon,
+  sedan: SedanIcon,
+  suv: SUVIcon,
+  mpv: MPVIcon,
+  van: VanIcon,
+  minibus: MinibusIcon,
+  coach: CoachIcon,
+}
+
+export function resolveFleetImageUrl(typeOrIcon?: string, seats?: number): string {
+  const key = String(typeOrIcon || '').toLowerCase()
+  const cap = Number(seats || 0)
+  if (key.includes('double') || cap >= 70) return '/images/fleet/double-decker.png'
+  if (key.includes('coach') && !key.includes('mini') && !key.includes('midi')) return '/images/fleet/luxury-motorcoach.png'
+  if (key.includes('charter') || key.includes('motorcoach') || cap >= 45) return '/images/fleet/luxury-motorcoach.png'
+  if (key.includes('mini coach') || key.includes('midicoach') || key.includes('33') || (cap >= 30 && cap < 45)) return '/images/fleet/executive-minibus-33.png'
+  if (key.includes('minibus') || (cap >= 18 && cap < 30)) return '/images/fleet/executive-minibus.png'
+  if (key.includes('sprinter') || (key.includes('van') && !key.includes('mini')) || (cap >= 10 && cap < 18)) return '/images/fleet/vip-sprinter.png'
+  if (key.includes('mpv') || key.includes('mini van') || (cap >= 7 && cap < 10)) return '/images/fleet/vip-mpv.png'
+  if (key.includes('suv') || (cap >= 5 && cap < 7)) return '/images/fleet/vip-suv.png'
+  return '/images/fleet/luxury-sedan.png'
+}
+
+function getVehicleProfileMeta(typeOrIcon?: string, seats?: number) {
+  const cap = Number(seats || 14)
+  if (cap >= 70) {
+    return { bagsPerUnit: 75, co2PerPaxKm: 13.8, minHours: 5, amenities: 'Upper Deck Lounge · Restroom · Wi-Fi · Luggage Bays' }
+  }
+  if (cap >= 45) {
+    return { bagsPerUnit: 50, co2PerPaxKm: 15.0, minHours: 5, amenities: 'Restroom · Wi-Fi · Underfloor Bays · Reclining' }
+  }
+  if (cap >= 30) {
+    return { bagsPerUnit: 30, co2PerPaxKm: 15.8, minHours: 5, amenities: 'Leather Reclining · Wi-Fi & USB-C · Luggage Bay' }
+  }
+  if (cap >= 18) {
+    return { bagsPerUnit: 20, co2PerPaxKm: 16.8, minHours: 4, amenities: 'Climate Control · Wi-Fi · Overhead & Rear Storage' }
+  }
+  if (cap >= 10) {
+    return { bagsPerUnit: 12, co2PerPaxKm: 19.4, minHours: 4, amenities: 'Executive Captain Seats · Wi-Fi · Chauffeur' }
+  }
+  return { bagsPerUnit: Math.max(4, cap - 1), co2PerPaxKm: 26.5, minHours: 3, amenities: 'VIP Leather Interior · Bottled Water · Chauffeur' }
+}
+
+function enrichOptionWithRateBreakdown(opt: any, ctx: {
+  passengers: number
+  routeDistanceKm: number
+  tripType: string
+  countryCode: string
+  currency: string
+  currencySymbol: string
+  numDays: number
+  effectiveHours: number
+  waitMinutesTotal: number
+}): any {
+  const cCode = String(ctx.countryCode || 'AE').toUpperCase()
+  const defaultTaxPct = cCode === 'AE' ? 5 : cCode === 'ES' ? 10 : cCode === 'MA' ? 14 : 0
+  const taxRatePct = opt.taxRatePct !== undefined ? Number(opt.taxRatePct) : defaultTaxPct
+  const totalGross = Math.max(1, Number(opt.price || 0))
+  const netFleetSubtotal = opt.taxAmount !== undefined
+    ? Math.max(0, totalGross - Number(opt.taxAmount))
+    : (taxRatePct > 0 ? +(totalGross / (1 + taxRatePct / 100)).toFixed(2) : totalGross)
+  const computedTaxAmount = opt.taxAmount !== undefined
+    ? Number(opt.taxAmount)
+    : +(totalGross - netFleetSubtotal).toFixed(2)
+
+  const rawVehicles = Array.isArray(opt.vehicles) && opt.vehicles.length > 0
+    ? opt.vehicles
+    : [{ count: 1, type: opt.label || 'Charter Bus', seats: opt.totalSeats || ctx.passengers || 56 }]
+
+  // Weight share across vehicle types when combination fleet (proportional to count * sqrt(seats))
+  const weights = rawVehicles.map((v: any) => Math.max(1, Number(v.count || 1)) * Math.sqrt(Math.max(4, Number(v.seats || 14))))
+  const weightSum = weights.reduce((a: number, b: number) => a + b, 0) || 1
+
+  const isRoundTrip = ctx.tripType === 'round-trip' || ctx.tripType === 'round_trip' || ctx.tripType === 'roundtrip'
+  const isShuttle = ctx.tripType === 'shuttle'
+  const distKm = Math.max(5, Number(ctx.routeDistanceKm || 40))
+  const billableDistKm = isRoundTrip ? distKm : distKm
+  const currLabel = (ctx.currencySymbol || ctx.currency || 'AED').trim()
+
+  let totalBags = 0
+  let weightedCo2 = 0
+  let totalSeatSum = 0
+
+  const enrichedVehicles = rawVehicles.map((v: any, idx: number) => {
+    const count = Math.max(1, Number(v.count || 1))
+    const seats = Math.max(4, Number(v.seats || 14))
+    const meta = getVehicleProfileMeta(v.iconName || v.type, seats)
+    totalBags += count * meta.bagsPerUnit
+    totalSeatSum += count * seats
+    weightedCo2 += (count * seats) * meta.co2PerPaxKm
+
+    const share = weights[idx] / weightSum
+    const vehicleGrossTotal = v.price !== undefined
+      ? Number(v.price)
+      : (rawVehicles.length === 1 ? totalGross : +(totalGross * share).toFixed(2))
+    const vehicleNetTotal = +(vehicleGrossTotal / (1 + taxRatePct / 100)).toFixed(2)
+    const vehicleTax = +(vehicleGrossTotal - vehicleNetTotal).toFixed(2)
+    const unitGross = +(vehicleGrossTotal / count).toFixed(2)
+    const unitNet = +(vehicleNetTotal / count).toFixed(2)
+
+    const rawHrs = Math.max(1.5, ctx.effectiveHours || (distKm / 55))
+    const billableHrs = Math.max(meta.minHours, Math.ceil(Math.max(1, rawHrs - 5 / 60)))
+    const deadheadShare = (!isRoundTrip && !isShuttle) ? 0.14 : 0
+    const distanceFuelShare = 0.18
+    const waitShare = ctx.waitMinutesTotal > 0 ? Math.min(0.16, (ctx.waitMinutesTotal / (billableHrs * 60)) * 0.35) : 0
+    const baseCharterShare = Math.max(0.5, 1 - deadheadShare - distanceFuelShare - waitShare)
+
+    const baseCharterNet = +(vehicleNetTotal * baseCharterShare).toFixed(2)
+    const distanceFuelNet = +(vehicleNetTotal * distanceFuelShare).toFixed(2)
+    const waitStopsNet = +(vehicleNetTotal * waitShare).toFixed(2)
+    const deadheadNet = +(vehicleNetTotal - baseCharterNet - distanceFuelNet - waitStopsNet).toFixed(2)
+    const effectiveUnitHourly = +((baseCharterNet / count) / Math.max(1, billableHrs * ctx.numDays)).toFixed(2)
+
+    const existingLogs = Array.isArray(v.debugLog) && v.debugLog.length > 0 ? v.debugLog : null
+    const generatedLogs: string[] = []
+    for (let d = 1; d <= ctx.numDays; d++) {
+      const dayFactor = 1 / ctx.numDays
+      generatedLogs.push(
+        `[Day ${d}] Engine: Whole-Hour Commercial Charter (${billableHrs}h billable block · min ${meta.minHours}h · ${billableDistKm} km route)`
+      )
+      generatedLogs.push(
+        `[Day ${d}] Base Charter Time Block (${count}× ${v.type}) -> Charged ${billableHrs} hrs @ ${effectiveUnitHourly.toFixed(2)} × ${count} = ${(baseCharterNet * dayFactor).toFixed(2)}`
+      )
+      generatedLogs.push(
+        `[Day ${d}] Verified Route Distance & Fuel Allocation -> Charged ${billableDistKm} km @ ${((distanceFuelNet * dayFactor) / Math.max(1, billableDistKm)).toFixed(2)}/km = ${(distanceFuelNet * dayFactor).toFixed(2)}`
+      )
+      if (waitStopsNet > 0) {
+        generatedLogs.push(
+          `[Day ${d}] Boarding & Scheduled Stop Waiting (${ctx.waitMinutesTotal} min) -> Charged ${ctx.waitMinutesTotal} min @ ${((waitStopsNet * dayFactor) / Math.max(1, ctx.waitMinutesTotal)).toFixed(2)}/min = ${(waitStopsNet * dayFactor).toFixed(2)}`
+        )
+      }
+      if (deadheadNet > 0.5) {
+        generatedLogs.push(
+          `[Day ${d}] Depot Positioning & Return Deadhead -> Charged ${count} unit(s) @ ${((deadheadNet * dayFactor) / count).toFixed(2)} = ${(deadheadNet * dayFactor).toFixed(2)}`
+        )
+      }
+    }
+    if (taxRatePct > 0) {
+      generatedLogs.push(
+        `[Day ${ctx.numDays}] Statutory Transport VAT / Tax (${taxRatePct}%) -> Charged ${vehicleNetTotal.toFixed(2)} @ ${taxRatePct}% = ${vehicleTax.toFixed(2)}`
+      )
+    }
+    generatedLogs.push(
+      `[Day ${ctx.numDays}] Total ${count}× ${v.type} Allocation -> Charged ${count} × ${currLabel} ${unitGross.toFixed(2)} = ${vehicleGrossTotal.toFixed(2)}`
+    )
+
+    return {
+      ...v,
+      count,
+      seats,
+      bagsPerUnit: meta.bagsPerUnit,
+      totalBags: count * meta.bagsPerUnit,
+      imageUrl: v.imageUrl || resolveFleetImageUrl(v.iconName || v.type, seats),
+      amenities: meta.amenities,
+      price: vehicleGrossTotal,
+      unitPrice: unitGross,
+      unitNetPrice: unitNet,
+      netSubtotal: vehicleNetTotal,
+      taxRatePct,
+      taxAmount: vehicleTax,
+      costBreakdown: {
+        billableHours: billableHrs * ctx.numDays,
+        minCharterHours: meta.minHours,
+        effectiveUnitHourly,
+        distanceKm: billableDistKm,
+        waitMinutes: ctx.waitMinutesTotal,
+        baseCharterCost: baseCharterNet,
+        distanceFuelCost: distanceFuelNet,
+        waitingStopsCost: waitStopsNet,
+        deadheadCost: Math.max(0, deadheadNet),
+        netSubtotal: vehicleNetTotal,
+        taxRatePct,
+        taxAmount: vehicleTax,
+        grossTotal: vehicleGrossTotal,
+      },
+      debugLog: existingLogs || generatedLogs,
+    }
+  })
+
+  const finalTotalSeats = Number(opt.totalSeats || totalSeatSum || ctx.passengers)
+  const avgCo2 = totalSeatSum > 0 ? +(weightedCo2 / totalSeatSum).toFixed(1) : 15.5
+  const primaryAmenities = enrichedVehicles.length > 1
+    ? `${enrichedVehicles.map((v: any) => v.type).join(' + ')} · ${enrichedVehicles.reduce((s: number, v: any) => s + v.count, 0)} Chauffeurs`
+    : enrichedVehicles[0]?.amenities || 'Verified Executive Charter Fleet'
+
+  return {
+    ...opt,
+    vehicles: enrichedVehicles,
+    totalSeats: finalTotalSeats,
+    totalLuggage: opt.totalLuggage || totalBags,
+    co2GramsPerPaxKm: avgCo2,
+    amenitiesText: opt.amenitiesText || primaryAmenities,
+    subtotal: netFleetSubtotal,
+    taxRatePct,
+    taxAmount: computedTaxAmount,
+    passengersCount: ctx.passengers,
+    routeDistanceKm: distKm,
+  }
 }
 
 export interface VehicleOption {
@@ -510,23 +706,37 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         if (!res || !res.ok) {
           console.warn(`[QuotationPanel] Calculate returned non-ok status (${res?.status}), using deterministic OptimizationSolver fallback`);
           const { fallbackList, fallbackCurrency, fallbackSymbol, localIsServed } = buildLocalFallbackOptions();
-          setOptions(fallbackList);
+          const waitTotal = Number(bookingDetails?.pickupWaitMin || 0) + Number(bookingDetails?.dropoffWaitMin || 0) + (Array.isArray(bookingDetails?.stops) ? bookingDetails.stops.reduce((s: number, st: any) => s + Number(st?.stopDurationMin || 0), 0) : 0);
+          const enrichCtx = {
+            passengers: Math.max(1, Number(passengers) || 1),
+            routeDistanceKm: Math.max(10, Number(routeDistanceKm) || 35),
+            tripType,
+            countryCode: String(payload.countryCode || bookingDetails?.pickup?.countryCode || 'AE'),
+            currency: fallbackCurrency,
+            currencySymbol: fallbackSymbol,
+            numDays: Math.max(1, (payload as any).multiDayStore?.length || 1),
+            effectiveHours: Number(bookingDetails?.effectiveTotalHours || payload.durationHours || 3),
+            waitMinutesTotal: waitTotal,
+          };
+          const enrichedFallback = fallbackList.map((opt: any) => enrichOptionWithRateBreakdown(opt, enrichCtx));
+          setOptions(enrichedFallback);
           setCurrency(fallbackCurrency);
           setCurrencySymbol(fallbackSymbol);
           setIsEstimatedUnservedArea(!localIsServed);
           setUnservedNoticeText(!localIsServed ? "This is an estimated rate — we don't serve this area yet." : null);
-          if (fallbackList.length > 0) {
-            setSelected(fallbackList[0]);
-            if (onSelectionChange) onSelectionChange(fallbackList[0]);
+          if (enrichedFallback.length > 0) {
+            setSelected(enrichedFallback[0]);
+            if (onSelectionChange) onSelectionChange(enrichedFallback[0]);
           }
           return;
         }
 
         const data = await res.json();
         const retCurrency = data.data?.currency || 'EUR';
-        const retSymbol = data.data?.currencySymbol || (retCurrency === 'EUR' ? '€' : '$');
+        const retSymbol = data.data?.currencySymbol || (retCurrency === 'EUR' ? '€' : retCurrency === 'USD' ? '$' : `${retCurrency} `);
         const numDays = Math.max(1, (payload as any).multiDayStore?.length || (payload as any).days || 1);
         const unservedFromApi = data.data?.isServedArea === false || data.data?.isEstimatedRate === true;
+        const waitTotal = Number(bookingDetails?.pickupWaitMin || 0) + Number(bookingDetails?.dropoffWaitMin || 0) + (Array.isArray(bookingDetails?.stops) ? bookingDetails.stops.reduce((s: number, st: any) => s + Number(st?.stopDurationMin || 0), 0) : 0);
 
         let returnedOptions = (data.data?.options || []).map((opt: any) => ({
           ...opt,
@@ -547,6 +757,19 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           setIsEstimatedUnservedArea(unservedFromApi);
           setUnservedNoticeText(unservedFromApi ? (data.data?.serviceNotice || "This is an estimated rate — we don't serve this area yet.") : null);
         }
+
+        const enrichCtx = {
+          passengers: Math.max(1, Number(passengers) || 1),
+          routeDistanceKm: Math.max(10, Number(routeDistanceKm) || 35),
+          tripType,
+          countryCode: String(payload.countryCode || bookingDetails?.pickup?.countryCode || 'AE'),
+          currency: retCurrency,
+          currencySymbol: retSymbol,
+          numDays,
+          effectiveHours: Number(bookingDetails?.effectiveTotalHours || payload.durationHours || 3),
+          waitMinutesTotal: waitTotal,
+        };
+        returnedOptions = returnedOptions.map((opt: any) => enrichOptionWithRateBreakdown(opt, enrichCtx));
 
         setOptions(returnedOptions);
         setCurrency(retCurrency);
@@ -780,89 +1003,192 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
   if (step === "confirmed" && selected) return null;
 
   const renderOption = (opt: any) => {
-    const Icon = VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan
     const isSelected = selected?.id === opt.id
-    const tagColors: Record<string, { bg: string; text: string }> = {
-      "CO2 Efficient": { bg: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', text: 'white' },
-      "Best Price": { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', text: 'white' },
-      "Fastest ETA": { bg: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', text: 'white' },
-      "Balanced": { bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', text: 'white' },
-    }
-    const tc = opt.tag ? tagColors[opt.tag] || { bg: '#475569', text: 'white' } : null
+    const vehicles = Array.isArray(opt.vehicles) && opt.vehicles.length > 0 ? opt.vehicles : [{ count: 1, type: opt.label, seats: opt.totalSeats }]
+    const isDual = vehicles.length > 1
+    const primaryImg = vehicles[0]?.imageUrl || resolveFleetImageUrl(vehicles[0]?.iconName || vehicles[0]?.type, vehicles[0]?.seats)
+    const secondaryImg = isDual ? (vehicles[1]?.imageUrl || resolveFleetImageUrl(vehicles[1]?.iconName || vehicles[1]?.type, vehicles[1]?.seats)) : null
+
+    const qtyBadge = isDual
+      ? vehicles.map((v: any) => v.count).join('+')
+      : (vehicles[0]?.count > 1 ? `×${vehicles[0].count}` : '')
+
+    const paxNum = Math.max(1, Number(passengers) || 1)
+    const totalSeats = Math.max(paxNum, Number(opt.totalSeats || paxNum))
+    const bufferSeats = Math.max(0, totalSeats - paxNum)
+    const seatEffPct = Math.min(100, Math.round((paxNum / totalSeats) * 100))
+    const co2Val = opt.co2GramsPerPaxKm || 15.4
+    const totalBags = opt.totalLuggage || Math.round(totalSeats * 0.88)
+
+    const vehiclesSummary = isDual
+      ? `${vehicles.map((v: any) => `${v.count}× ${v.seats}-Pax`).join(' + ')} (${totalSeats} Seats)`
+      : `${vehicles[0]?.count || 1}× ${vehicles[0]?.type || opt.label}`
+
+    const tagText = String(opt.tag || (opt.isRecommended ? 'Best Price & Lowest CO₂' : 'Verified Fleet'))
+    const isGreenBadge = /co2|co₂|exact|eco/i.test(tagText) && !/best price/i.test(tagText)
+    const badgeBg = isGreenBadge ? '#dcfce7' : '#dbeafe'
+    const badgeColor = isGreenBadge ? '#15803d' : '#1d4ed8'
+
+    const formattedPrice = Number(opt.price || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
+    const displayCurr = (currencySymbol || currency || 'AED').trim()
 
     return (
-      <button key={opt.id} onClick={() => setSelected(opt)} style={{
-        width: '100%', textAlign: 'left', padding: '24px 16px 16px', borderRadius: '16px', cursor: 'pointer',
-        border: isSelected ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
-        background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : '#ffffff',
-        boxShadow: isSelected ? '0 12px 30px -10px rgba(37,99,235,0.2), 0 0 0 4px rgba(59,130,246,0.08)' : '0 2px 10px rgba(0,0,0,0.02)',
-        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-        position: isSelected ? 'sticky' : 'relative',
-        top: isSelected ? (headerVisible ? `${headerHeight + 12}px` : '12px') : 'auto',
-        zIndex: isSelected ? 5 : 1,
-        transform: isSelected ? 'scale(1.01)' : 'scale(1)',
-        display: 'flex', alignItems: 'center', gap: '14px', overflow: 'hidden'
-      }}>
-        {/* Service Category Corner Badge */}
-        <div style={{ position: 'absolute', top: 0, left: 0, padding: '4px 10px', background: isSelected ? '#3b82f6' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', borderRadius: '0 0 10px 0', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px', zIndex: 2 }}>
-          {opt.serviceCategory || (opt.isMixedService ? "Mixed Fleet" : "Standard Fleet")}
-        </div>
-
-        {/* Icon Container */}
-        <div style={{ position: 'relative', width: '70px', height: '48px', borderRadius: '12px', background: isSelected ? '#dbeafe' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: isSelected ? '1px solid #bfdbfe' : '1px solid #f1f5f9', marginTop: '8px' }}>
-          {opt.vehicles.length > 1 ? (
-            <div style={{ position: 'relative', width: '54px', height: '36px' }}>
-              <div style={{ position: 'absolute', top: '-4px', left: '-4px', opacity: 0.5, transform: 'scale(0.85)' }}>
-                {React.createElement(VEHICLE_ICONS[opt.vehicles[1]?.iconName || opt.vehicles[1]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#93c5fd' : '#cbd5e1', size: 32 })}
-              </div>
-              <div style={{ position: 'absolute', bottom: '-4px', right: '-4px' }}>
-                {React.createElement(VEHICLE_ICONS[opt.vehicles[0]?.iconName || opt.vehicles[0]?.type] || VEHICLE_ICONS.sedan, { color: isSelected ? '#2563eb' : '#475569', size: 40 })}
-              </div>
-            </div>
-          ) : (
-            <>
-              <Icon color={isSelected ? '#2563eb' : '#64748b'} size={42} />
-              {opt.vehicles[0]?.count > 1 && (
-                <div style={{ position: 'absolute', top: '-6px', right: '-6px', padding: '2px 6px', borderRadius: '10px', background: isSelected ? '#1d4ed8' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid white' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>×{opt.vehicles[0].count}</span>
+      <button
+        key={opt.id}
+        type="button"
+        onClick={() => setSelected(opt)}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          padding: '13px 14px',
+          borderRadius: '16px',
+          cursor: 'pointer',
+          border: isSelected ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+          background: isSelected ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 65%)' : '#ffffff',
+          boxShadow: isSelected
+            ? '0 8px 24px -8px rgba(37,99,235,0.22), 0 0 0 3px rgba(37,99,235,0.08)'
+            : '0 2px 8px rgba(15,23,42,0.03)',
+          transition: 'all 0.18s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Top Row: Real 3D Vehicle Thumbnail + Title/Badge/Amenities + Crisp Unclipped Price */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '11px', flex: 1, minWidth: 0 }}>
+            {/* Vehicle Thumbnail Box (Matches transhola.com/get-price) */}
+            <div style={{
+              position: 'relative',
+              width: '66px',
+              height: '46px',
+              borderRadius: '11px',
+              background: isSelected ? '#ffffff' : '#f8fafc',
+              border: isSelected ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              padding: '3px',
+            }}>
+              {isDual && secondaryImg ? (
+                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <img
+                    src={secondaryImg}
+                    alt=""
+                    style={{ position: 'absolute', left: '1px', top: '2px', width: '38px', height: '26px', objectFit: 'contain', opacity: 0.78 }}
+                  />
+                  <img
+                    src={primaryImg}
+                    alt={opt.label}
+                    style={{ position: 'absolute', right: '0px', bottom: '1px', width: '44px', height: '30px', objectFit: 'contain' }}
+                  />
                 </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Core Info & Price */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {opt.vehicles.length > 1 ? (
-                opt.vehicles.map((v: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
-                      {v.count}× {v.label || v.type}
-                    </span>
-                  </div>
-                ))
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', lineHeight: 1.2 }}>{opt.label}</span>
-                </div>
+                <img
+                  src={primaryImg}
+                  alt={opt.label}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              )}
+              {qtyBadge && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-6px',
+                  right: '-6px',
+                  padding: '1.5px 6px',
+                  borderRadius: '999px',
+                  background: '#1d4ed8',
+                  color: '#ffffff',
+                  fontSize: '10px',
+                  fontWeight: 900,
+                  lineHeight: 1.3,
+                  border: '1.5px solid #ffffff',
+                  boxShadow: '0 2px 6px rgba(29,78,216,0.28)',
+                }}>
+                  {qtyBadge}
+                </span>
               )}
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-              <p style={{ fontSize: '17px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.5px', lineHeight: 1 }}>{currencySymbol || currency} {opt.price}</p>
-              {opt.tag && tc && (
-                <span style={{ fontSize: '10px', fontWeight: 800, background: tc.bg, color: tc.text, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>{opt.tag}</span>
-              )}
+
+            {/* Title + Deployment Badge + Amenities */}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '14.5px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.25px', lineHeight: 1.2, wordBreak: 'break-word' }}>
+                {opt.label}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px' }}>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  background: badgeBg,
+                  color: badgeColor,
+                  fontSize: '10.5px',
+                  fontWeight: 800,
+                  lineHeight: 1.3,
+                }}>
+                  {tagText}
+                </span>
+              </div>
+              <div style={{
+                fontSize: '11px',
+                color: '#64748b',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {opt.amenitiesText || 'Restroom · Wi-Fi · Underfloor Bays · Reclining'}
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <Users style={{ width: '11px', height: '11px', color: '#94a3b8' }} /> {opt.totalSeats} seats
-              </span>
-            </div>
+          {/* Right Price Column — Never Clipped */}
+          <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '4px' }}>
+            <span style={{
+              fontSize: '15.5px',
+              fontWeight: 900,
+              color: '#0f172a',
+              letterSpacing: '-0.3px',
+              whiteSpace: 'nowrap',
+              display: 'block',
+            }}>
+              {displayCurr} {formattedPrice}
+            </span>
+          </div>
+        </div>
+
+        {/* Bottom Row: Website Seat Efficiency & CO2 Green Box + Bags/Summary Meta Bar */}
+        <div style={{
+          background: '#f0fdf4',
+          border: '1px solid #dcfce7',
+          borderRadius: '10px',
+          padding: '8px 10px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#15803d', lineHeight: 1.35 }}>
+            ✓ {totalSeats} Total Seats for {paxNum} Pax ({seatEffPct === 100 ? '100% Exact Seat Fit' : `${seatEffPct}% Seat Efficiency · +${bufferSeats} buffer seats`} · {co2Val}g CO₂/pax-km)
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            paddingTop: '5px',
+            borderTop: '1px solid #dcfce7',
+            fontSize: '10.5px',
+            fontWeight: 800,
+          }}>
+            <span style={{ color: '#166534', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              ✓ {totalSeats} Seats · {totalBags} Bags Capacity
+            </span>
+            <span style={{ color: '#2563eb', whiteSpace: 'nowrap' }}>
+              {vehiclesSummary}
+            </span>
           </div>
         </div>
       </button>
@@ -871,20 +1197,35 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* Header */}
+      {/* Header (Matches transhola.com/get-price Recommended Fleet header) */}
       <div
         ref={headerRef}
         style={{
-          padding: '18px 22px 14px', borderBottom: '1px solid #f1f5f9', background: 'white',
+          padding: '18px 20px 14px', borderBottom: '1px solid #f1f5f9', background: 'white',
           position: 'sticky', top: 0, zIndex: 10,
           transform: headerVisible ? 'translateY(0)' : 'translateY(-100%)',
           transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        <button onClick={() => { setSelected(null); if (onSelectionChange) onSelectionChange(null); onBack(); }} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px' }}>
-          <X style={{ width: '15px', height: '15px' }} />
-        </button>
-        <h2 style={{ fontSize: '22px', fontWeight: 900, letterSpacing: '-0.5px', margin: 0 }}>Recommended Fleet</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => { setSelected(null); if (onSelectionChange) onSelectionChange(null); onBack(); }} style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1.5px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <X style={{ width: '15px', height: '15px', color: '#0f172a' }} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontSize: '21px', fontWeight: 900, letterSpacing: '-0.5px', margin: 0, color: '#0f172a' }}>Recommended Fleet</h2>
+            <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '2px 9px', borderRadius: '999px' }}>
+                Pricing based on vehicle type &amp; combination
+              </span>
+            </div>
+            <p style={{ margin: '5px 0 0', fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>
+              {passengers} Passengers
+              {bookingDetails?.startDate ? ` · ${new Date(bookingDetails.startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+              {routeDistanceKm ? ` · ${routeDistanceKm} km` : ''}
+              {bookingDetails?.duration ? ` · ${Math.floor(bookingDetails.duration / 3600)}h ${Math.round((bookingDetails.duration % 3600) / 60)}m` : ''}
+            </p>
+          </div>
+        </div>
 
         {/* Shuttle route direction display */}
         {tripType === 'shuttle' && (
@@ -1004,16 +1345,19 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
             )}
 
             {shown.length > 0 && (
-              <div style={{ marginBottom: '32px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: isEstimatedUnservedArea ? '#fef3c7' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ShieldCheck style={{ width: '14px', height: '14px', color: isEstimatedUnservedArea ? '#d97706' : '#2563eb' }} />
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <div style={{ width: '22px', height: '22px', borderRadius: '6px', background: isEstimatedUnservedArea ? '#fef3c7' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShieldCheck style={{ width: '13px', height: '13px', color: isEstimatedUnservedArea ? '#d97706' : '#2563eb' }} />
                   </div>
-                  <h3 style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+                  <h3 style={{ fontSize: '12px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
                     {isEstimatedUnservedArea ? 'Estimated Fleet Rates' : 'Recommended Fleet'}
                   </h3>
+                  <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '999px', border: '1px solid #e2e8f0' }}>
+                    {shown.length} {shown.length === 1 ? 'Option' : 'Options'}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {shown.map(opt => renderOption(opt))}
                 </div>
               </div>

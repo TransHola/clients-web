@@ -1439,9 +1439,10 @@ export function BookingPanel({
   return (
     <div style={{ display: 'flex', gap: activeStep === 'quotation' ? '12px' : '0', width: '100%', height: '100%', boxSizing: 'border-box' }}>
       <div 
-        className={activeStep === 'quotation' ? "bg-white/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl" : ""}
+        className={activeStep === 'quotation' ? "bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-3xl" : ""}
         style={{
-        width: activeStep === "search" ? '100%' : '400px',
+        width: activeStep === "search" ? '100%' : '355px',
+        height: '100%',
         flexShrink: 0,
         position: 'relative',
         overflowY: 'auto',
@@ -1506,23 +1507,23 @@ export function BookingPanel({
         )}
 
         {activeStep === 'quotation' && (
-          <div style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: '24px', background: '#f8fafc', height: '100%', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button onClick={() => goToStep('search')} style={{ background: 'white', border: '1.5px solid #e2e8f0', borderRadius: '12px', width: '42px', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }} onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.transform = 'translateX(-2px)' }} onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.transform = 'translateX(0)' }} title="Edit Configuration">
-                <ChevronLeft style={{ width: '20px', height: '20px', color: '#0f172a' }} />
+          <div style={{ padding: '22px 20px 28px', display: 'flex', flexDirection: 'column', gap: '18px', background: '#f8fafc', minHeight: '100%', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <button onClick={() => goToStep('search')} style={{ background: 'white', border: '1.5px solid #e2e8f0', borderRadius: '12px', width: '38px', height: '38px', flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }} onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.transform = 'translateX(-2px)' }} onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.transform = 'translateX(0)' }} title="Edit Configuration">
+                <ChevronLeft style={{ width: '18px', height: '18px', color: '#0f172a' }} />
               </button>
-              <div>
-                <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.12em', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px rgba(16,185,129,0.4)' }} />
                   PRICING READY
                 </p>
-                <h2 style={{ fontSize: '20px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', color: '#0f172a' }}>
-                  {tripType === 'one-way' && (multiDayStore.length > 1 ? 'Multiple transfers' : 'One Way transfer')}
+                <h2 style={{ fontSize: '19px', fontWeight: 900, margin: 0, letterSpacing: '-0.4px', color: '#0f172a', lineHeight: 1.2 }}>
+                  {tripType === 'one-way' && (multiDayStore.length > 1 ? 'Multiple Transfers' : 'One Way Transfer')}
                   {tripType === 'roundtrip' && `Round Trip ${roundTripMode === 'continuous' ? 'Continuous' : 'Transfer'}`}
                   {tripType === 'shuttle' && 'Shuttle Service'}
                   {tripType === 'multi-day' && 'Multi-Day Itinerary'}
                 </h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
                     <Users style={{ width: '14px', height: '14px', color: '#8b5cf6' }} /> {passengers} Pax
                   </span>
@@ -4034,10 +4035,11 @@ export function BookingPanel({
 
       {activeStep === "quotation" && (
         <div 
-          className="bg-white/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl"
+          className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-3xl"
           style={{
           flex: 1,
-          minWidth: 0,
+          height: '100%',
+          minWidth: '370px',
           overflowY: 'auto',
           overflowX: 'hidden',
           animation: 'fadeInSlideLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)'

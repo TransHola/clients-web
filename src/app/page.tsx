@@ -93,18 +93,20 @@ export default function Home() {
       <PortalAccessGuard>
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative p-3 md:p-4 gap-3 md:gap-4 bg-slate-50 dark:bg-slate-900">
         
-        {/* LEFT BLOCK — Booking Panel */}
+        {/* LEFT BLOCK — Booking Panel (Expands cleanly into Itinerary + Recommended Fleet columns on quotation step) */}
         <div 
-          className={`flex-none h-[60%] md:h-full flex flex-col bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl md:rounded-3xl z-20 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden ${
-            bookingStep === 'quotation' ? 'md:flex-[1.5]' : 'md:flex-none'
+          className={`flex-none h-[60%] md:h-full flex flex-col z-20 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden ${
+            bookingStep === 'quotation'
+              ? 'md:flex-[1.65] bg-transparent border-none shadow-none rounded-none'
+              : 'md:flex-none bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl md:rounded-3xl'
           }`}
           style={{ 
-            width: typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : (bookingStep === 'quotation' ? 'auto' : '550px'),
-            minWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '700px' : 'auto',
-            maxWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '900px' : '100%',
+            width: typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : (bookingStep === 'quotation' ? 'auto' : '540px'),
+            minWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '760px' : 'auto',
+            maxWidth: typeof window !== 'undefined' && window.innerWidth >= 768 && bookingStep === 'quotation' ? '960px' : '100%',
           }}
         >
-          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 custom-scrollbar">
+          <div className={`flex-1 min-h-0 custom-scrollbar ${bookingStep === 'quotation' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
             <BookingPanel
               onPickupChange={handlePickupChange}
               onDropoffChange={handleDropoffChange}

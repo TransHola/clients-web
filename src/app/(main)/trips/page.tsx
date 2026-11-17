@@ -54,6 +54,7 @@ function formatPrice(amount: number | string | undefined, currency?: string): st
 }
 
 export default function TripsPage() {
+  const router = useRouter()
   const [bookings, setBookings] = React.useState<Booking[]>([])
   const [loading, setLoading] = React.useState(true)
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("list")
