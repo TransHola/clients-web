@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const mode = (request.nextUrl.searchParams.get('mode') || 'quotations').toLowerCase()
   const refsParam = request.nextUrl.searchParams.get('refs') || ''
   const lookupRef = (request.nextUrl.searchParams.get('lookupRef') || '').trim().toUpperCase()
+  const singleId = (request.nextUrl.searchParams.get('id') || '').trim()
 
   const guestRefs = refsParam
     .split(',')
@@ -25,6 +26,51 @@ export async function GET(request: NextRequest) {
   } catch {}
 
   const adminClient = createAdminClient()
+
+  // Single-UUID quotation/booking hydration (e.g. ?quote=<uuid> Edit Quotation flow)
+  if (singleId && /^[0-9a-f-]{36}$/i.test(singleId)) {
+    const { data, error } = await (adminClient as any)
+      .from('bookings')
+      .select('*, operator:assigned_operator_id(company_name, phone_number)')
+      .eq('id', singleId)
+      .maybeSingle()
+
+    if (error || !data) {
+      return NextResponse.json({ found: false, error: error?.message || 'Not found' }, { status: 200 })
+    }
+
+    const uid = verifiedUser?.id || null
+    let userOrgId: string | null = verifiedUser?.user_metadata?.organization_id || null
+    if (uid && !userOrgId) {
+      try {
+        const { data: prof } = await (adminClient as any)
+          .from('profiles')
+          .select('preferences')
+          .eq('id', uid)
+          .maybeSingle()
+        userOrgId = prof?.preferences?.organizationId || null
+      } catch {}
+    }
+
+    const rowRef = String(data.booking_ref || data.booking_details?.ref || '').toUpperCase()
+    const isGuestRefMatch = rowRef && guestRefs.some((r) => r.toUpperCase() === rowRef)
+    const isUnclaimedGuestQuote = !data.customer_id && !data.user_id && String(data.status || '').toLowerCase() === 'quotation'
+    const isAuthorizedOwner =
+      Boolean(
+        uid &&
+          (data.customer_id === uid ||
+            data.user_id === uid ||
+            (userOrgId && (data.customer_id === userOrgId || data.user_id === userOrgId)))
+      ) ||
+      isGuestRefMatch ||
+      isUnclaimedGuestQuote
+
+    if (!isAuthorizedOwner) {
+      return NextResponse.json({ found: false, error: 'Unauthorized' }, { status: 403 })
+    }
+
+    return NextResponse.json({ found: true, record: data }, { status: 200 })
+  }
 
   // Optional single-reference lookup for guest booking search
   if (lookupRef) {

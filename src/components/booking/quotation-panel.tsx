@@ -939,15 +939,21 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
         body: JSON.stringify({
           userId: authUser?.id,
           userEmail: authUser?.email,
+          quotation_db_id: bookingDetails?.quotation_db_id || undefined,
           option: selected,
           pickup: bookingDetails?.pickup,
           dropoff: bookingDetails?.dropoff,
           startDate: bookingDetails?.startDate,
           startTime: bookingDetails?.startTime,
+          endDate: bookingDetails?.endDate,
+          endTime: bookingDetails?.endTime,
           passengers: bookingDetails?.passengers || passengers,
           tripType: bookingDetails?.tripType || tripType,
+          roundTripMode: bookingDetails?.roundTripMode,
+          serviceMode: bookingDetails?.serviceMode,
           multiDayStore: bookingDetails?.multiDayStore,
           stops: bookingDetails?.stops,
+          routeLegs: bookingDetails?.routeLegs,
           returnLoc: bookingDetails?.returnLoc,
           selectedAmenities: bookingDetails?.selectedAmenities,
           adaRequired: bookingDetails?.adaRequired,
@@ -956,8 +962,10 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
           countryCode: bookingDetails?.countryCode || bookingDetails?.pickup?.countryCode,
           distance: routeDistanceKm || bookingDetails?.distance,
           duration: bookingDetails?.durationHours || bookingDetails?.duration,
+          effectiveTotalHours: bookingDetails?.effectiveTotalHours,
           routePolyline: bookingDetails?.routePolyline,
           pickupWaitMin: bookingDetails?.pickupWaitMin,
+          dropoffWaitMin: bookingDetails?.dropoffWaitMin,
           isThirdParty,
           thirdPartyInfo: isThirdParty ? thirdPartyInfo : undefined
         })
@@ -1537,7 +1545,11 @@ export function QuotationPanel({ onBack, onSelect, onSelectionChange, passengers
                 ) : (
                   <BookmarkPlus style={{ width: '14px', height: '14px', color: savedAsQuote ? '#059669' : '#2563eb' }} />
                 )}
-                {savedAsQuote ? 'Quote Saved ✓' : isSavingQuote ? 'Saving...' : 'Save as Quotation'}
+                {savedAsQuote
+                  ? (bookingDetails?.quotation_db_id ? 'Quotation Updated ✓' : 'Quote Saved ✓')
+                  : isSavingQuote
+                    ? (bookingDetails?.quotation_db_id ? 'Updating...' : 'Saving...')
+                    : (bookingDetails?.quotation_db_id ? 'Update Quotation' : 'Save as Quotation')}
               </button>
             )}
           </div>

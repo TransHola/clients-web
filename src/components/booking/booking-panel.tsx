@@ -301,102 +301,357 @@ export function BookingPanel({
     }
   }, [dropoffPinMoved])
 
-  // Quote Hydration on Mount (via Deep Linking)
+  // Quote Hydration on Mount (via Deep Linking ?quote=<uuid>)
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const urlParams = new URLSearchParams(window.location.search);
     const quoteId = urlParams.get("quote");
-    if (quoteId) {
-      async function hydrateQuote() {
+    if (!quoteId) return;
+
+    const to24HourClock = (raw?: string): string => {
+      if (!raw) return "";
+      const s = String(raw).trim();
+      const ampm = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+      if (ampm) {
+        let h = parseInt(ampm[1], 10);
+        const m = ampm[2];
+        const mer = ampm[3].toUpperCase();
+        if (mer === "PM" && h < 12) h += 12;
+        if (mer === "AM" && h === 12) h = 0;
+        return `${String(h).padStart(2, "0")}:${m}`;
+      }
+      const h24 = s.match(/^(\d{1,2}):(\d{2})/);
+      if (h24) {
+        return `${String(parseInt(h24[1], 10)).padStart(2, "0")}:${h24[2]}`;
+      }
+      return s;
+    };
+
+    const normalizeIsoDate = (raw?: string, fallbackIso?: string): string => {
+      if (raw && /^\d{4}-\d{2}-\d{2}$/.test(String(raw).trim())) {
+        return String(raw).trim();
+      }
+      const candidate = raw || fallbackIso;
+      if (!candidate) return "";
+      if (/^\d{4}-\d{2}-\d{2}/.test(String(candidate))) {
+        return String(candidate).slice(0, 10);
+      }
+      const parsed = new Date(candidate);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().slice(0, 10);
+      }
+      return "";
+    };
+
+    async function hydrateQuote() {
+      try {
+        const savedRefsStr = localStorage.getItem("transhola_recent_quote_refs");
+        const savedRefs: string[] = savedRefsStr ? JSON.parse(savedRefsStr) : [];
+        const refsParam = savedRefs.length > 0 ? `&refs=${encodeURIComponent(savedRefs.join(","))}` : "";
+
         const supabase = createClient();
-        const { data, error } = await supabase.from('bookings').select('*').eq('id', quoteId).maybeSingle();
-        if (data && (data.booking_details || data.quotation_details)) {
-          const d = data.booking_details || data.quotation_details;
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
 
-          setEditingQuoteRef(data.booking_ref || data.ref || `Q-${data.id.substring(0, 8).toUpperCase()}`);
-          setQuotationDbId(data.id);
-          if (data.price) setQuotePrice(data.price);
-          if (data.currency) setQuoteCurrency(data.currency);
-          if (d.option) setHydratedOption(d.option);
-
-          if (d.tripType === "shuttle") {
-            setShuttleVehicles(d.passengers || 1);
-            setShuttleVehicleInput(String(d.passengers || 1));
-          } else {
-            setPassengers(d.passengers || 1);
-            setPassengerInput(String(d.passengers || 1));
-          }
-
-          const activeDaySrc = (d.tripType === 'multi-day' && d.multiDayStore && d.multiDayStore.length > 0) ? d.multiDayStore[0] : d;
-
-          const pLoc = activeDaySrc.pickup || activeDaySrc.pickupLoc;
-          if (pLoc) {
-            setPickupValue(pLoc.address || activeDaySrc.pickupValue || "");
-            setPickupLoc(pLoc);
-            if (onPickupChange) onPickupChange(pLoc);
-            originalPickupRef.current = pLoc.address || activeDaySrc.pickupValue || "";
-          } else if (activeDaySrc.pickupValue) {
-            setPickupValue(activeDaySrc.pickupValue);
-          }
-
-          const dLoc = activeDaySrc.dropoff || activeDaySrc.dropoffLoc;
-          if (dLoc) {
-            setDropoffValue(dLoc.address || activeDaySrc.dropoffValue || "");
-            setDropoffLoc(dLoc);
-            if (onDropoffChange) onDropoffChange(dLoc);
-            originalDropoffRef.current = dLoc.address || activeDaySrc.dropoffValue || "";
-          } else if (activeDaySrc.dropoffValue) {
-            setDropoffValue(activeDaySrc.dropoffValue);
-          }
-          if (d.returnLoc) {
-            setReturnValue(d.returnLoc.address);
-            setReturnLoc(d.returnLoc);
-          }
-
-          if (d.startDate) setStartDate(d.startDate);
-          if (activeDaySrc.startTime) setStartTime(activeDaySrc.startTime);
-          if (d.endDate) setEndDate(d.endDate);
-          if (activeDaySrc.endTime) setEndTime(activeDaySrc.endTime);
-
-          if (d.tripType === "roundtrip" || d.tripType === "multi-day") {
-            setShowReturn(true);
-            setIsShuttle(false);
-          } else if (d.tripType === "shuttle") {
-            setIsShuttle(true);
-            setShowReturn(false);
-          } else {
-            setShowReturn(false);
-            setIsShuttle(false);
-          }
-          const rawStops = activeDaySrc.stops || d.stops || [];
-          if (rawStops.length) {
-            setStops(rawStops.map((s: any, idx: number) => ({
-              id: String(s.id || idx + 1),
-              address: typeof s === 'string' ? s : (s.address || s.name || s.location || s.loc?.address || ''),
-              loc: s.loc || (s.lat && s.lon ? { address: s.address, lat: s.lat, lon: s.lon } : null),
-              stopDurationMin: typeof s.stopDurationMin === 'number' ? s.stopDurationMin : (typeof s.waitMin === 'number' ? s.waitMin : 1)
-            })));
-          }
-          if (activeDaySrc.pickupWaitMin !== undefined) setPickupWaitMin(activeDaySrc.pickupWaitMin);
-          if (activeDaySrc.dropoffWaitMin !== undefined) setDropoffWaitMin(activeDaySrc.dropoffWaitMin);
-
-          if (d.multiDayStore) {
-            setMultiDayStore(d.multiDayStore);
-          }
-
-          if (d.distance) {
-            // Convert from the stored unit back to meters
-            const isImperial = (d.countryCode === 'US' || d.countryCode === 'GB');
-            setRouteDistance(isImperial ? (d.distance / 0.000621371) : (d.distance * 1000));
-          }
-          if (d.duration) {
-            // Duration is stored in seconds
-            setRouteDuration(d.duration);
+        let data: any = null;
+        const apiRes = await fetch(`/api/client-records?id=${encodeURIComponent(quoteId!)}${refsParam}`, {
+          credentials: "include",
+          headers,
+          cache: "no-store",
+        });
+        if (apiRes.ok) {
+          const json = await apiRes.json().catch(() => null);
+          if (json?.found && json?.record) {
+            data = json.record;
           }
         }
+
+        // Secondary fallback to direct browser Supabase query
+        if (!data) {
+          const direct = await supabase.from("bookings").select("*").eq("id", quoteId).maybeSingle();
+          data = direct.data || null;
+        }
+
+        if (!data || !(data.booking_details || data.quotation_details)) return;
+
+        // Guard multiDayStore auto-sync watcher while hydrating all form fields atomically
+        isSwappingRef.current = true;
+
+        const d = data.booking_details || data.quotation_details || {};
+        const hasStore = Array.isArray(d.multiDayStore) && d.multiDayStore.length > 0;
+        const day0 = hasStore ? d.multiDayStore[0] : null;
+
+        setEditingQuoteRef(data.booking_ref || d.ref || data.ref || `QTE-${data.id.substring(0, 6).toUpperCase()}`);
+        setQuotationDbId(data.id);
+        const resolvedPrice = Number(data.price ?? data.total_price ?? d.option?.price ?? 0);
+        if (resolvedPrice > 0) setQuotePrice(resolvedPrice);
+        if (data.currency || d.currency) setQuoteCurrency(data.currency || d.currency);
+        if (d.option) setHydratedOption(d.option);
+        setHasSelectedTripType(true);
+
+        // 1. Trip Type, Return Mode & Service Mode
+        const rawTrip = String(d.tripType || data.trip_type || "one-way").toLowerCase();
+        if (rawTrip === "roundtrip" || rawTrip === "round-trip" || rawTrip === "round_trip") {
+          setShowReturn(true);
+          setIsShuttle(false);
+          const inferredMode =
+            d.roundTripMode ||
+            data.round_trip_mode ||
+            (hasStore && d.multiDayStore.length === 2 && (!day0?.stops || day0.stops.length === 0) ? "transfer" : "continuous");
+          setRoundTripMode(inferredMode === "transfer" ? "transfer" : "continuous");
+        } else if (rawTrip === "multi-day" || rawTrip === "multiday" || rawTrip === "multi_day") {
+          setShowReturn(true);
+          setIsShuttle(false);
+          setRoundTripMode("continuous");
+        } else if (rawTrip === "shuttle") {
+          setIsShuttle(true);
+          setShowReturn(false);
+        } else {
+          setShowReturn(false);
+          setIsShuttle(false);
+        }
+        if (d.serviceMode || data.service_mode) {
+          setServiceMode((d.serviceMode || data.service_mode) === "asap" ? "asap" : "scheduled");
+        }
+
+        // 2. Passengers / Shuttle Vehicles
+        const paxVal = Math.max(1, Number(d.passengers || data.passengers || 1));
+        if (rawTrip === "shuttle") {
+          setShuttleVehicles(paxVal);
+          setShuttleVehicleInput(String(paxVal));
+        } else {
+          setPassengers(paxVal);
+          setPassengerInput(String(paxVal));
+        }
+
+        // 3. Pickup, Dropoff & Country GeoContext
+        const pLocRaw = d.pickup || day0?.pickupLoc || day0?.pickup;
+        const pLoc =
+          pLocRaw && typeof pLocRaw === "object"
+            ? {
+                ...pLocRaw,
+                coordinate:
+                  pLocRaw.coordinate ||
+                  (typeof pLocRaw.lat === "number" && typeof (pLocRaw.lon ?? pLocRaw.lng) === "number"
+                    ? { lat: pLocRaw.lat, lon: pLocRaw.lon ?? pLocRaw.lng }
+                    : undefined),
+                isAutoDetected: false,
+              }
+            : null;
+        const resolvedPickupAddr =
+          (typeof pLocRaw === "string" ? pLocRaw : pLoc?.address || pLoc?.name) ||
+          day0?.pickupValue ||
+          data.pickup_address ||
+          data.pickup_location ||
+          "";
+
+        if (pLoc) {
+          setPickupLoc(pLoc);
+          onPickupChange?.(pLoc);
+        }
+        if (resolvedPickupAddr) {
+          setPickupValue(resolvedPickupAddr);
+          originalPickupRef.current = resolvedPickupAddr;
+        }
+
+        const dLocRaw = d.dropoff || day0?.dropoffLoc || day0?.dropoff;
+        const dLoc =
+          dLocRaw && typeof dLocRaw === "object"
+            ? {
+                ...dLocRaw,
+                coordinate:
+                  dLocRaw.coordinate ||
+                  (typeof dLocRaw.lat === "number" && typeof (dLocRaw.lon ?? dLocRaw.lng) === "number"
+                    ? { lat: dLocRaw.lat, lon: dLocRaw.lon ?? dLocRaw.lng }
+                    : undefined),
+                isAutoDetected: false,
+              }
+            : null;
+        const resolvedDropoffAddr =
+          (typeof dLocRaw === "string" ? dLocRaw : dLoc?.address || dLoc?.name) ||
+          day0?.dropoffValue ||
+          data.dropoff_address ||
+          data.dropoff_location ||
+          "";
+
+        if (dLoc) {
+          setDropoffLoc(dLoc);
+          onDropoffChange?.(dLoc);
+        }
+        if (resolvedDropoffAddr) {
+          setDropoffValue(resolvedDropoffAddr);
+          originalDropoffRef.current = resolvedDropoffAddr;
+        }
+
+        if (d.returnLoc) {
+          setReturnValue(d.returnLoc.address || "");
+          setReturnLoc(d.returnLoc);
+          onReturnChange?.(d.returnLoc);
+        }
+
+        // Sync Country & City Context from saved quotation
+        const cCode = String(
+          d.countryCode || data.country_code || pLoc?.countryCode || dLoc?.countryCode || ""
+        )
+          .trim()
+          .toUpperCase();
+        if (cCode) {
+          const unit = cCode === "US" || cCode === "GB" ? "mi" : "km";
+          const countryNames: Record<string, string> = {
+            AE: "United Arab Emirates",
+            US: "United States",
+            ES: "Spain",
+            MA: "Morocco",
+            SA: "Saudi Arabia",
+            GB: "United Kingdom",
+          };
+          setClientGeoContext((prev) => ({
+            ...prev,
+            countryCode: cCode,
+            country: countryNames[cCode] || prev.country,
+            city: pLoc?.raw?.properties?.city || pLoc?.city || prev.city,
+            distanceUnit: unit,
+            lat: pLoc?.coordinate?.lat ?? prev.lat,
+            lon: pLoc?.coordinate?.lon ?? prev.lon,
+          }));
+          onCountryCodeChange?.(cCode);
+          onDistanceUnitChange?.(unit);
+        }
+
+        // 4. Dates & Times (Unlocks location & schedule inputs immediately)
+        const resolvedStartDate = normalizeIsoDate(d.startDate || day0?.dateStr || data.start_date, data.scheduled_at || data.pickup_date);
+        const resolvedStartTime = to24HourClock(day0?.startTime || d.startTime) || "09:00";
+        const lastStoreDay = hasStore ? d.multiDayStore[d.multiDayStore.length - 1] : null;
+        const resolvedEndDate = normalizeIsoDate(d.endDate || lastStoreDay?.dateStr || data.end_date, resolvedStartDate);
+        const resolvedEndTime = to24HourClock(day0?.endTime || d.endTime);
+
+        if (resolvedStartDate) setStartDate(resolvedStartDate);
+        if (resolvedStartTime) setStartTime(resolvedStartTime);
+        if (resolvedEndDate) setEndDate(resolvedEndDate);
+        if (resolvedEndTime) setEndTime(resolvedEndTime);
+
+        // 5. Intermediate Stops & Per-Stop Hour/Minute Units
+        const rawStops = (Array.isArray(day0?.stops) && day0.stops.length > 0 ? day0.stops : d.stops) || [];
+        const unitMap: Record<string, "min" | "hr"> = {};
+        const hydratedStops: StopEntry[] = rawStops.map((s: any, idx: number) => {
+          const sid = String(s.id || `stop-${idx + 1}`);
+          const sLoc =
+            s.loc ||
+            (typeof s.lat === "number" && typeof (s.lon ?? s.lng) === "number"
+              ? { address: s.address, coordinate: { lat: s.lat, lon: s.lon ?? s.lng } }
+              : null);
+          if (sLoc && !sLoc.coordinate && typeof sLoc.lat === "number" && typeof (sLoc.lon ?? sLoc.lng) === "number") {
+            sLoc.coordinate = { lat: sLoc.lat, lon: sLoc.lon ?? sLoc.lng };
+          }
+          const mins =
+            typeof s.stopDurationMin === "number"
+              ? s.stopDurationMin
+              : typeof s.waitMin === "number"
+                ? s.waitMin
+                : 30;
+          unitMap[sid] = mins >= 60 && mins % 60 === 0 ? "hr" : "min";
+          return {
+            id: sid,
+            address: typeof s === "string" ? s : s.address || s.name || s.location || sLoc?.address || "",
+            loc: sLoc,
+            stopDurationMin: mins,
+            waitConfirmed: true,
+          };
+        });
+
+        setStopDurationUnit(unitMap);
+        setStops(hydratedStops);
+        onStopsChange?.(hydratedStops);
+
+        // 6. Boarding & Offloading Wait Durations
+        const resolvedPickupWait = day0?.pickupWaitMin ?? d.pickupWaitMin;
+        if (resolvedPickupWait !== undefined && resolvedPickupWait !== null) {
+          setIsPickupWaitCustom(true);
+          setPickupWaitMin(Number(resolvedPickupWait));
+          setPickupWaitUnit(Number(resolvedPickupWait) >= 60 && Number(resolvedPickupWait) % 60 === 0 ? "hr" : "min");
+        }
+        const resolvedDropoffWait = day0?.dropoffWaitMin ?? d.dropoffWaitMin;
+        if (resolvedDropoffWait !== undefined && resolvedDropoffWait !== null) {
+          setIsDropoffWaitCustom(true);
+          setDropoffWaitMin(Number(resolvedDropoffWait));
+          setDropoffWaitUnit(Number(resolvedDropoffWait) >= 60 && Number(resolvedDropoffWait) % 60 === 0 ? "hr" : "min");
+        }
+
+        // 7. Multi-Day / Day-1 Store Hydration (ensures !multiDayStore[activeDayIdx]?.startTime is NEVER true!)
+        setActiveDayIdx(0);
+        if (hasStore) {
+          const normalizedStore = d.multiDayStore.map((dayItem: any, idx: number) => ({
+            ...dayItem,
+            dateStr: normalizeIsoDate(dayItem.dateStr, resolvedStartDate) || resolvedStartDate,
+            startTime: to24HourClock(dayItem.startTime) || resolvedStartTime,
+            endTime: to24HourClock(dayItem.endTime) || (idx === 0 ? resolvedEndTime : ""),
+            pickupValue: dayItem.pickupValue || (idx === 0 ? resolvedPickupAddr : ""),
+            pickupLoc: dayItem.pickupLoc || (idx === 0 ? pLoc : null),
+            dropoffValue: dayItem.dropoffValue || (idx === 0 ? resolvedDropoffAddr : ""),
+            dropoffLoc: dayItem.dropoffLoc || (idx === 0 ? dLoc : null),
+            stops: idx === 0 && hydratedStops.length > 0 ? hydratedStops : dayItem.stops || [],
+          }));
+          setMultiDayStore(normalizedStore);
+          onMultiDayStoreChange?.(normalizedStore);
+        } else if (resolvedStartDate) {
+          const synthesizedStore: DailyData[] = [
+            {
+              dateStr: resolvedStartDate,
+              startTime: resolvedStartTime,
+              endTime: resolvedEndTime,
+              pickupValue: resolvedPickupAddr,
+              pickupLoc: pLoc,
+              dropoffValue: resolvedDropoffAddr,
+              dropoffLoc: dLoc,
+              stops: hydratedStops,
+              routePolyline: d.routePolyline || null,
+              pickupWaitMin: resolvedPickupWait !== undefined ? Number(resolvedPickupWait) : undefined,
+              dropoffWaitMin: resolvedDropoffWait !== undefined ? Number(resolvedDropoffWait) : undefined,
+            },
+          ];
+          setMultiDayStore(synthesizedStore);
+          onMultiDayStoreChange?.(synthesizedStore);
+        }
+
+        // 8. Amenities, ADA & Route Metrics
+        if (Array.isArray(d.selectedAmenities)) setSelectedAmenities(d.selectedAmenities);
+        else if (Array.isArray(data.amenities)) setSelectedAmenities(data.amenities);
+        if (d.adaRequired !== undefined) setAdaRequired(Boolean(d.adaRequired));
+        if (d.adaVehicleCount !== undefined) setAdaVehicleCount(Math.max(1, Number(d.adaVehicleCount || 1)));
+
+        if (day0?.routeDistance) {
+          setRouteDistance(Number(day0.routeDistance));
+        } else if (d.distance) {
+          const isImperial = cCode === "US" || cCode === "GB";
+          setRouteDistance(isImperial ? Number(d.distance) / 0.000621371 : Number(d.distance) * 1000);
+        }
+        if (day0?.routeDuration) {
+          setRouteDuration(Number(day0.routeDuration));
+        } else if (d.duration) {
+          setRouteDuration(Number(d.duration));
+        }
+        if (Array.isArray(day0?.routeLegs)) {
+          setRouteLegs(day0.routeLegs);
+        } else if (Array.isArray(d.routeLegs)) {
+          setRouteLegs(d.routeLegs);
+        }
+        if (d.routePolyline || day0?.routePolyline) {
+          setRoutePolyline(d.routePolyline || day0?.routePolyline);
+        }
+
+        setTimeout(() => {
+          isSwappingRef.current = false;
+        }, 200);
+      } catch (err) {
+        console.error("Failed to hydrate saved quotation:", err);
+        isSwappingRef.current = false;
       }
-      hydrateQuote();
     }
+
+    hydrateQuote();
   }, []);
 
   // Restore Itinerary from Local Storage (Only for genuine user-built routes, never initial auto-detected state or explicit CTA params)
@@ -1909,6 +2164,9 @@ export function BookingPanel({
                     <h1 style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.6px', lineHeight: 1.1, margin: 0, color: '#0f172a' }}>{editingQuoteRef}</h1>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => router.push('/quotations')} style={{ padding: '8px 14px', borderRadius: '10px', background: 'white', border: '1px solid #e2e8f0', color: '#0f172a', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
+                      Cancel Edit
+                    </button>
                     <button onClick={() => {
                       setEditingQuoteRef(null);
                       setQuotationDbId(null);
@@ -1927,6 +2185,7 @@ export function BookingPanel({
                       setEndDate("");
                       setEndTime("");
                       setStops([]);
+                      onStopsChange?.([]);
                       setMultiDayStore([]);
                       setRouteDistance(0);
                       setRouteDuration(0);
@@ -1938,9 +2197,6 @@ export function BookingPanel({
                       window.history.replaceState(null, '', window.location.pathname);
                     }} style={{ padding: '8px 14px', borderRadius: '10px', background: '#eff6ff', border: '1.5px solid #2563eb', color: '#1d4ed8', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
                       Create New
-                    </button>
-                    <button onClick={() => router.push('/quotations')} style={{ padding: '8px 14px', borderRadius: '10px', background: 'white', border: '1px solid #e2e8f0', color: '#0f172a', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
-                      Cancel Edit
                     </button>
                   </div>
                 </div>
@@ -4016,7 +4272,7 @@ export function BookingPanel({
                 ) : (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Zap style={{ width: '16px', height: '16px', color: isFormValid ? '#fbbf24' : '#94a3b8' }} />
-                    {editingQuoteRef ? `UPDATE BOOKING ${quotePrice ? '— ' + quoteCurrency + ' ' + quotePrice : ''}` : 'REQUEST PRICE'}
+                    {editingQuoteRef ? `UPDATE QUOTATION ${quotePrice ? '— ' + quoteCurrency + ' ' + Number(quotePrice).toLocaleString('en-US', { minimumFractionDigits: Math.abs(Number(quotePrice) - Math.round(Number(quotePrice))) > 0.005 ? 2 : 0, maximumFractionDigits: 2 }) : ''}` : 'REQUEST PRICE'}
                   </span>
                 )}
               </button>
