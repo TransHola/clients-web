@@ -493,10 +493,10 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
 
   // FULL WIDTH HORIZONTAL MODE
   return (
-    <div className={`rounded-xl border p-4 sm:px-6 flex flex-col xl:flex-row items-center gap-6 xl:gap-8 transition-all duration-300 relative overflow-hidden bg-white hover:border-slate-300 hover:shadow-md ${isExpired ? "grayscale opacity-75 pointer-events-none" : ""}`}>
+    <div className={`rounded-xl border p-4 sm:px-6 flex flex-col lg:flex-row items-center gap-4 lg:gap-5 xl:gap-8 transition-all duration-300 relative overflow-hidden bg-white hover:border-slate-300 hover:shadow-md ${isExpired ? "grayscale opacity-75 pointer-events-none" : ""}`}>
       
       {/* Vehicle Block */}
-      <div className="flex items-center gap-4 w-full xl:w-[320px] shrink-0">
+      <div className="flex items-center gap-3.5 w-full lg:w-[260px] xl:w-[320px] shrink-0">
          <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 shrink-0">
             <CarFront className="w-6 h-6 text-slate-600" />
          </div>
@@ -527,7 +527,7 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
       </div>
       
       {/* Route Block */}
-      <div className="flex-1 min-w-0 flex flex-col justify-center xl:border-l xl:border-r border-slate-100 xl:px-8 shrink-0 relative">
+      <div className="flex-1 w-full min-w-0 flex flex-col justify-center lg:border-l lg:border-r border-slate-100 lg:px-5 xl:px-8 relative">
          {isMultiDay && (
             <div className="flex items-center justify-between mb-3 pb-1.5 border-b border-slate-50 w-full max-w-xs mx-auto">
                <button 
@@ -573,7 +573,7 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
       </div>
       
       {/* Meta Date & Schedule Block */}
-      <div className="w-full xl:w-[175px] shrink-0 hidden md:block">
+      <div className="w-full lg:w-[155px] xl:w-[175px] shrink-0 hidden md:block">
          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Schedule</p>
          <p className="text-sm font-bold text-slate-900 truncate">{tripDate}</p>
          {tripTime && (
@@ -587,10 +587,10 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
       </div>
 
       {/* Price Block */}
-      <div className="w-full xl:w-[120px] shrink-0 xl:text-right hidden sm:block">
+      <div className="w-full lg:w-[115px] xl:w-[125px] shrink-0 lg:text-right hidden sm:block">
          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total</p>
-         <div className="flex items-baseline xl:justify-end gap-1">
-            <p className="text-2xl font-black text-slate-900 leading-none">{quote.price}</p>
+         <div className="flex items-baseline lg:justify-end gap-1">
+            <p className="text-xl xl:text-2xl font-black text-slate-900 leading-none">{quote.price}</p>
             <p className="text-xs font-bold text-slate-500 uppercase">{quote.currency}</p>
          </div>
          {!isExpired && <p className="text-[10px] font-bold text-amber-600 mt-1"><CountdownTimer expiresAt={quote.expiresAt} /></p>}
@@ -598,7 +598,7 @@ function QuoteCard({ quote, isActive, isCompact, onSelect, onViewDetails }: { qu
       </div>
       
       {/* Actions */}
-      <div className="flex xl:flex-col gap-2 w-full xl:w-[140px] shrink-0">
+      <div className="flex lg:flex-col gap-2 w-full lg:w-[130px] xl:w-[140px] shrink-0">
          {isExpired ? (
             <Button size="sm" variant="outline" className="w-full font-bold h-10 rounded-xl" onClick={onViewDetails}>
               <RefreshCw className="w-4 h-4 mr-1.5" /> Reinstate

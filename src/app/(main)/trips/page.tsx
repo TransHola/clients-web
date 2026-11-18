@@ -602,10 +602,10 @@ function BookingListItem({ b, onCancelClick }: { b: Booking; onCancelClick: (id:
   return (
     <div
       onClick={() => router.push(`/trips/${b.id}`)}
-      className="rounded-xl border bg-white p-4 sm:px-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer"
+      className="rounded-xl border bg-white p-4 sm:px-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-5 xl:gap-6 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer"
     >
       {/* Left side: Basic Info */}
-      <div className="flex items-center gap-4 w-full xl:w-[320px] shrink-0">
+      <div className="flex items-center gap-3.5 w-full lg:w-[265px] xl:w-[320px] shrink-0">
         <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
           <Car className="w-6 h-6 text-blue-600" />
         </div>
@@ -644,7 +644,7 @@ function BookingListItem({ b, onCancelClick }: { b: Booking; onCancelClick: (id:
       </div>
 
       {/* Middle side: Route Details */}
-      <div className="flex-1 w-full min-w-0 flex flex-col justify-center xl:border-l xl:border-r border-slate-100 xl:px-8 shrink-0 relative">
+      <div className="flex-1 w-full min-w-0 flex flex-col justify-center lg:border-l lg:border-r border-slate-100 lg:px-5 xl:px-8 relative">
         {isMultiDay && (
           <div className="flex items-center justify-between mb-3 pb-1.5 border-b border-slate-50 w-full max-w-xs mx-auto">
             <button
@@ -690,7 +690,7 @@ function BookingListItem({ b, onCancelClick }: { b: Booking; onCancelClick: (id:
       </div>
 
       {/* Schedule Block */}
-      <div className="w-full xl:w-[175px] shrink-0 hidden md:block">
+      <div className="w-full lg:w-[155px] xl:w-[175px] shrink-0 hidden md:block">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Schedule</p>
         <p className="text-sm font-bold text-slate-900 truncate">{b.date}</p>
         {b.time && <p className="text-xs font-bold text-slate-700 truncate mt-0.5">{b.time}</p>}
@@ -702,11 +702,11 @@ function BookingListItem({ b, onCancelClick }: { b: Booking; onCancelClick: (id:
       </div>
 
       {/* Right side: Price & Actions */}
-      <div className="flex flex-row xl:flex-col items-center xl:items-end justify-between w-full xl:w-[160px] shrink-0 gap-3 pt-2 xl:pt-0">
-        <p className="font-black text-lg text-slate-900">{b.price}</p>
+      <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between w-full lg:w-[140px] xl:w-[160px] shrink-0 gap-2.5 pt-2 lg:pt-0">
+        <p className="font-black text-lg text-slate-900 whitespace-nowrap">{b.price}</p>
 
-        <div className="flex items-center gap-2 w-full xl:w-auto mt-auto justify-end">
-          <Button size="sm" variant="outline" className="rounded-lg text-xs font-bold h-8 flex-1 xl:flex-none w-full xl:w-auto" onClick={(e) => { e.stopPropagation(); router.push(`/trips/${b.id}`); }}>
+        <div className="flex items-center gap-2 w-full lg:w-auto mt-auto justify-end">
+          <Button size="sm" variant="outline" className="rounded-lg text-xs font-bold h-8 flex-1 lg:flex-none w-full lg:w-auto" onClick={(e) => { e.stopPropagation(); router.push(`/trips/${b.id}`); }}>
             View Details
           </Button>
           <DropdownMenu>
