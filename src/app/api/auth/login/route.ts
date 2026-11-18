@@ -17,6 +17,13 @@ import {
   buildSessionCookieOptions,
   createClientSessionBundle,
 } from '@/lib/auth/clientSession'
+import {
+  checkPortalSecurityGate,
+  extractRequestCountry,
+  hashSessionFingerprint,
+  recordPortalAuthAttempt,
+  registerPortalSecuritySession,
+} from '@/lib/security/security-telemetry'
 
 function withCors(res: NextResponse, origin?: string | null) {
   const allowed =
@@ -40,6 +47,9 @@ export async function POST(request: Request) {
   const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
   const proto = request.headers.get('x-forwarded-proto') || 'https'
   const clientIp = extractClientIp(request.headers)
+  const userAgent = request.headers.get('user-agent') || 'Unknown Client'
+  const country = extractRequestCountry(request.headers)
+  const adminClient = createAdminClient()
 
   try {
     let body: any = {}
@@ -57,6 +67,16 @@ export async function POST(request: Request) {
     // 1. Rigorous input validation & Hash-Flooding DoS mitigation
     const validation = validateAuthInputs(email, password)
     if (!validation.isValid || !validation.normalizedEmail) {
+      await recordPortalAuthAttempt(adminClient, {
+        email: typeof email === 'string' ? email.trim().toLowerCase() : 'invalid-payload',
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'invalid_input',
+        blockedAutomatically: true,
+        reason: validation.error || 'Rejected malformed client login input',
+      })
       await enforceConstantTime(startTime, 300)
       return withCors(
         NextResponse.json(
@@ -69,9 +89,44 @@ export async function POST(request: Request) {
 
     const normalizedEmail = validation.normalizedEmail
 
+    // 1b. Live Security Gate (IP Blocklist & Emergency Lock Mode)
+    const gate = await checkPortalSecurityGate(adminClient, {
+      ip: clientIp,
+      email: normalizedEmail,
+      portal: 'clients-web',
+      userAgent,
+      country,
+    })
+    if (!gate.allowed) {
+      await enforceConstantTime(startTime, 300)
+      return withCors(
+        NextResponse.json(
+          { error: gate.error },
+          {
+            status: gate.status || 403,
+            headers: gate.retryAfterSeconds
+              ? { 'Retry-After': String(gate.retryAfterSeconds) }
+              : undefined,
+          }
+        ),
+        origin
+      )
+    }
+
     // 2. Sliding-Window Adaptive Rate Limiting
     const rateLimit = checkLoginRateLimit(clientIp, normalizedEmail)
     if (!rateLimit.allowed) {
+      await recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'rate_limited',
+        blockedAutomatically: true,
+        reason: rateLimit.error || 'Client login rate limit triggered',
+        policy: gate.policy,
+      })
       await enforceConstantTime(startTime, 300)
       return withCors(
         NextResponse.json(
@@ -86,7 +141,6 @@ export async function POST(request: Request) {
     }
 
     // 3. Cryptographic Password Verification via Postgres pgcrypto RPC
-    const adminClient = createAdminClient()
     let verifiedUser: any = null
 
     const { data: rpcUser } = await (adminClient as any).rpc('verify_user_credentials', {
@@ -100,6 +154,17 @@ export async function POST(request: Request) {
 
     if (!verifiedUser || !verifiedUser.id) {
       recordLoginFailure(clientIp, normalizedEmail)
+      await recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'failed_credentials',
+        blockedAutomatically: false,
+        reason: 'Invalid client email or password',
+        policy: gate.policy,
+      })
       await enforceConstantTime(startTime, 350)
       return withCors(
         NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 }),
@@ -121,6 +186,18 @@ export async function POST(request: Request) {
 
     if (status === 'suspended' || status === 'banned' || status === 'inactive') {
       recordLoginFailure(clientIp, normalizedEmail)
+      await recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        userId: verifiedUser.id,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'account_suspended',
+        blockedAutomatically: true,
+        reason: `Blocked sign-in from ${status} client account`,
+        policy: gate.policy,
+      })
       await enforceConstantTime(startTime, 350)
       return withCors(
         NextResponse.json(
@@ -133,6 +210,18 @@ export async function POST(request: Request) {
 
     if ((PROHIBITED_OPERATOR_ROLES as readonly string[]).includes(role)) {
       recordLoginFailure(clientIp, normalizedEmail)
+      await recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        userId: verifiedUser.id,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'role_denied',
+        blockedAutomatically: true,
+        reason: `Portal isolation blocked operator role '${role}' on Client Portal`,
+        policy: gate.policy,
+      })
       await enforceConstantTime(startTime, 350)
       return withCors(
         NextResponse.json(
@@ -148,6 +237,18 @@ export async function POST(request: Request) {
 
     if (role && !(ALLOWED_CLIENT_ROLES as readonly string[]).includes(role)) {
       recordLoginFailure(clientIp, normalizedEmail)
+      await recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        userId: verifiedUser.id,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'role_denied',
+        blockedAutomatically: true,
+        reason: `Unauthorized role '${role}' blocked on Client Portal`,
+        policy: gate.policy,
+      })
       await enforceConstantTime(startTime, 350)
       return withCors(
         NextResponse.json(
@@ -168,6 +269,34 @@ export async function POST(request: Request) {
     })
 
     recordLoginSuccess(clientIp, normalizedEmail)
+
+    const fp = hashSessionFingerprint(`clients-web:${verifiedUser.id}:${clientIp}:${userAgent}`)
+    await Promise.all([
+      registerPortalSecuritySession(adminClient, {
+        sessionFingerprint: fp,
+        userId: verifiedUser.id,
+        email: normalizedEmail,
+        actorName: profile?.full_name || verifiedUser.user_metadata?.full_name || normalizedEmail,
+        role,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        ttlHours: gate.policy?.sessionTtlHours || 12,
+      }),
+      recordPortalAuthAttempt(adminClient, {
+        email: normalizedEmail,
+        userId: verifiedUser.id,
+        portal: 'clients-web',
+        ip: clientIp,
+        userAgent,
+        country,
+        outcome: 'success',
+        blockedAutomatically: false,
+        reason: 'Authenticated Client Portal session established',
+        policy: gate.policy,
+      }),
+    ])
 
     const userPhone =
       profile?.phone ||
